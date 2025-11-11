@@ -1,0 +1,46 @@
+# .dockerignore
+# Archivos a excluir al construir imágenes Docker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv
+
+# Environment
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Reports
+reports/
+
+# Data
+data/
+
+# Tests
+tests/
+.pytest_cache/
+
+# Documentation
+docs/
+*.md
+
+# Temp
+tmp/
+temp/
