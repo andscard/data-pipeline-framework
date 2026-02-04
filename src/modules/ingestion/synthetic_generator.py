@@ -6,6 +6,7 @@ Generador de datos sintéticos para pruebas y simulaciones
 import pandas as pd
 import numpy as np
 from faker import Faker
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import logging
@@ -208,30 +209,35 @@ class SyntheticDataGenerator:
     
     def generate_customer_data(self, num_customers: int = 1000) -> pd.DataFrame:
         """
-        Generar dataset de clientes realista.
+        Generar dataset de clientes completo y realista.
         
         Args:
             num_customers: Número de clientes a generar
             
         Returns:
-            pd.DataFrame con datos de clientes
+            pd.DataFrame con datos de clientes (8 columnas)
         """
-        schema = {
-            'customer_id': 'uuid',
-            'name': 'name',
-            'email': 'email',
-            'phone': 'phone',
-            'address': 'address',
-            'registration_date': 'date',
-            'is_active': 'bool',
-            'lifetime_value': 'amount'
-        }
+        df = pd.DataFrame({
+            'customer_id': [self.fake.uuid4() for _ in range(num_customers)],
+            'name': [self.fake.name() for _ in range(num_customers)],
+            'email': [self.fake.email() for _ in range(num_customers)],
+            'phone': [self.fake.phone_number() for _ in range(num_customers)],
+            'address': [self.fake.address().replace('\n', ', ') for _ in range(num_customers)],
+            'registration_date': pd.date_range('2024-01-01', periods=num_customers, freq='H'),
+            'last_login': pd.date_range('2025-01-01', periods=num_customers, freq='30min'),
+            'account_status': np.random.choice(
+                ['active', 'inactive', 'suspended'], 
+                num_customers, 
+                p=[0.8, 0.15, 0.05]
+            ),
+            'lifetime_value': np.random.uniform(100, 10000, num_customers).round(2)
+        })
         
-        return self.generate(schema, num_customers)
+        return df
     
     def generate_transaction_data(self, num_transactions: int = 10000) -> pd.DataFrame:
         """
-        Generar dataset de transacciones realista.
+        Generar dataset de transacciones completo y realista.
         
         Args:
             num_transactions: Número de transacciones a generar
@@ -239,29 +245,89 @@ class SyntheticDataGenerator:
         Returns:
             pd.DataFrame con datos de transacciones
         """
-        schema = {
-            'transaction_id': 'uuid',
-            'customer_id': 'uuid',
-            'timestamp': 'datetime',
-            'amount': 'amount',
-            'category': 'category',
-            'status': 'category'
-        }
-        
-        df = self.generate(schema, num_transactions)
-        
-        # Ajustar categorías para que sean más realistas
-        df['category'] = np.random.choice(
-            ['Electronics', 'Clothing', 'Food', 'Books', 'Other'],
-            num_transactions
-        )
-        df['status'] = np.random.choice(
-            ['completed', 'pending', 'cancelled'],
-            num_transactions,
-            p=[0.85, 0.10, 0.05]  # 85% completed, 10% pending, 5% cancelled
-        )
+        df = pd.DataFrame({
+            'transaction_id': [self.fake.uuid4() for _ in range(num_transactions)],
+            'customer_id': [self.fake.uuid4() for _ in range(num_transactions)],
+            'timestamp': [self.fake.date_time_between(start_date='-30d', end_date='now') 
+                         for _ in range(num_transactions)],
+            'amount': np.random.uniform(10, 5000, num_transactions).round(2),
+            'category': np.random.choice(
+                ['Electronics', 'Clothing', 'Food', 'Books', 'Other'],
+                num_transactions
+            ),
+            'status': np.random.choice(
+                ['completed', 'pending', 'cancelled'],
+                num_transactions,
+                p=[0.85, 0.10, 0.05]
+            )
+        })
         
         return df
+
+
+    def generate_anomalous_data(self, num_records: int = 500, anomaly_rate: float = 0.10) -> pd.DataFrame:
+        """
+        Generar dataset con anomalías inyectadas para testing.
+        
+        Args:
+            num_records: Número de registros a generar
+            anomaly_rate: Porcentaje de anomalías (0.0-1.0)
+            
+        Returns:
+            pd.DataFrame con datos y anomalías mezcladas
+        """
+        schema = {
+            'id': 'int',
+            'name': 'name',
+            'email': 'email',
+            'amount': 'amount',
+            'date': 'date'
+        }
+        
+        clean_data = self.generate(schema, num_records=num_records)
+        anomalous_data = self.inject_anomalies(
+            clean_data,
+            anomaly_rate=anomaly_rate,
+            anomaly_types=['nulls', 'outliers', 'duplicates']
+        )
+        
+        return anomalous_data
+    
+    def save_to_formats(self, df: pd.DataFrame, base_path: Path, formats: List[str] = None) -> Dict[str, bool]:
+        """
+        Guardar DataFrame en múltiples formatos.
+        
+        Args:
+            df: DataFrame a guardar
+            base_path: Path base (sin extensión)
+            formats: Lista de formatos ['csv', 'excel', 'parquet', 'txt']
+            
+        Returns:
+            Dict con formato: éxito
+        """
+        if formats is None:
+            formats = ['csv', 'excel', 'parquet', 'txt']
+        
+        results = {}
+        base_path = Path(base_path)
+        base_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        for fmt in formats:
+            try:
+                if fmt == 'csv':
+                    df.to_csv(f"{base_path}.csv", index=False)
+                elif fmt == 'excel':
+                    df.to_excel(f"{base_path}.xlsx", index=False, sheet_name='Data')
+                elif fmt == 'parquet':
+                    df.to_parquet(f"{base_path}.parquet", index=False, engine='pyarrow')
+                elif fmt == 'txt':
+                    df.to_csv(f"{base_path}.txt", index=False, sep='|')
+                results[fmt] = True
+            except Exception as e:
+                logger.error(f"Failed to save {fmt}: {e}")
+                results[fmt] = False
+        
+        return results
 
 
 # Factory function

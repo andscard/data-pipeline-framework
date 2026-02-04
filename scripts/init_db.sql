@@ -1,32 +1,91 @@
 -- scripts/init_db.sql
+-- ============================================
 -- Script de inicialización de base de datos
--- Se ejecuta automáticamente al crear el contenedor de PostgreSQL
+-- ============================================
+-- 
+-- Este script es IDEMPOTENTE y puede ejecutarse múltiples veces sin errores.
+-- Utiliza CREATE IF NOT EXISTS para evitar fallos en re-ejecuciones.
+--
+-- USO:
+--
+-- 1. Con Docker (recomendado para entorno local):
+--    docker exec -i framework_postgres psql -U admin -d pipeline_db < scripts/init_db.sql
+--    
+--    ¿Qué hace Docker aquí?
+--    - 'docker exec': Ejecuta un comando dentro de un contenedor corriendo
+--    - '-i': Modo interactivo (permite pasar input al comando)
+--    - 'framework_postgres': Nombre del contenedor de PostgreSQL
+--    - 'psql': Cliente de PostgreSQL
+--    - '-U admin': Usuario de PostgreSQL
+--    - '-d pipeline_db': Base de datos destino
+--    - '< scripts/init_db.sql': Redirige el contenido del script como input
+--    
+--    Ventajas de usar Docker:
+--    ✓ Aislamiento: No interfiere con PostgreSQL local
+--    ✓ Reproducible: Mismo entorno en todos los desarrolladores
+--    ✓ Fácil limpieza: docker-compose down -v elimina todo
+--    ✓ Múltiples versiones: Puedes tener diferentes versiones de PostgreSQL
+--
+-- 2. Sin Docker (PostgreSQL local):
+--    psql -U admin -d pipeline_db -f scripts/init_db.sql
+--    
+--    Nota: Requiere que PostgreSQL esté instalado localmente
+--
+-- 3. Desde Python (usado en setup_environment.py):
+--    Se ejecuta usando SQLAlchemy, statement por statement
+--
+-- ============================================
+
+-- Configurar comportamiento en caso de errores
+\set ON_ERROR_STOP off
+
+-- Mostrar mensajes informativos
+\echo '============================================'
+\echo 'Inicializando base de datos...'
+\echo '============================================'
 
 -- ============================================
 -- Crear extensiones necesarias
 -- ============================================
 
+\echo ''
+\echo '[*] Creando extensiones...'
+
 -- UUID para generar identificadores únicos
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+\echo '  ✓ uuid-ossp'
 
 -- Funciones de texto completo (full-text search)
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+\echo '  ✓ pg_trgm'
 
 -- Funciones criptográficas
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+\echo '  ✓ pgcrypto'
 
 -- ============================================
 -- Crear esquemas
 -- ============================================
 
+\echo ''
+\echo '[*] Creando esquemas...'
+
 CREATE SCHEMA IF NOT EXISTS pipeline;
+\echo '  ✓ pipeline'
+
 CREATE SCHEMA IF NOT EXISTS security;
+\echo '  ✓ security'
+
 CREATE SCHEMA IF NOT EXISTS monitoring;
+\echo '  ✓ monitoring'
 
 -- ============================================
 -- Tabla: pipeline.pipelines
 -- Configuraciones de pipelines
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.pipelines...'
 
 CREATE TABLE IF NOT EXISTS pipeline.pipelines (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -36,20 +95,35 @@ CREATE TABLE IF NOT EXISTS pipeline.pipelines (
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(100),
     
     CONSTRAINT pipelines_name_not_empty CHECK (length(trim(name)) > 0)
 );
 
 -- Índices para búsqueda rápida
-CREATE INDEX idx_pipelines_name ON pipeline.pipelines(name);
-CREATE INDEX idx_pipelines_is_active ON pipeline.pipelines(is_active);
-CREATE INDEX idx_pipelines_created_at ON pipeline.pipelines(created_at DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_pipelines_name') THEN
+        CREATE INDEX idx_pipelines_name ON pipeline.pipelines(name);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_pipelines_is_active') THEN
+        CREATE INDEX idx_pipelines_is_active ON pipeline.pipelines(is_active);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_pipelines_created_at') THEN
+        CREATE INDEX idx_pipelines_created_at ON pipeline.pipelines(created_at DESC);
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: pipeline.executions
 -- Registro de ejecuciones de pipelines
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.executions...'
 
 CREATE TABLE IF NOT EXISTS pipeline.executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -71,14 +145,30 @@ CREATE TABLE IF NOT EXISTS pipeline.executions (
 );
 
 -- Índices
-CREATE INDEX idx_executions_pipeline_id ON pipeline.executions(pipeline_id);
-CREATE INDEX idx_executions_status ON pipeline.executions(status);
-CREATE INDEX idx_executions_start_time ON pipeline.executions(start_time DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_pipeline_id') THEN
+        CREATE INDEX idx_executions_pipeline_id ON pipeline.executions(pipeline_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_status') THEN
+        CREATE INDEX idx_executions_status ON pipeline.executions(status);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_start_time') THEN
+        CREATE INDEX idx_executions_start_time ON pipeline.executions(start_time DESC);
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: pipeline.validation_results
 -- Resultados de validaciones de calidad
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.validation_results...'
 
 CREATE TABLE IF NOT EXISTS pipeline.validation_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -94,15 +184,31 @@ CREATE TABLE IF NOT EXISTS pipeline.validation_results (
 );
 
 -- Índices
-CREATE INDEX idx_validation_results_execution_id ON pipeline.validation_results(execution_id);
-CREATE INDEX idx_validation_results_rule_name ON pipeline.validation_results(rule_name);
-CREATE INDEX idx_validation_results_passed ON pipeline.validation_results(passed);
-CREATE INDEX idx_validation_results_timestamp ON pipeline.validation_results(timestamp DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_execution_id') THEN
+        CREATE INDEX idx_validation_results_execution_id ON pipeline.validation_results(execution_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_rule_name') THEN
+        CREATE INDEX idx_validation_results_rule_name ON pipeline.validation_results(rule_name);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_passed') THEN
+        CREATE INDEX idx_validation_results_passed ON pipeline.validation_results(passed);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_timestamp') THEN
+        CREATE INDEX idx_validation_results_timestamp ON pipeline.validation_results(timestamp DESC);
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: pipeline.audit_logs
 -- Logs de auditoría del sistema
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.audit_logs...'
 
 CREATE TABLE IF NOT EXISTS pipeline.audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -120,19 +226,37 @@ CREATE TABLE IF NOT EXISTS pipeline.audit_logs (
 );
 
 -- Índices para búsquedas eficientes
-CREATE INDEX idx_audit_logs_execution_id ON pipeline.audit_logs(execution_id);
-CREATE INDEX idx_audit_logs_timestamp ON pipeline.audit_logs(timestamp DESC);
-CREATE INDEX idx_audit_logs_level ON pipeline.audit_logs(level);
-CREATE INDEX idx_audit_logs_module ON pipeline.audit_logs(module);
-CREATE INDEX idx_audit_logs_correlation_id ON pipeline.audit_logs(correlation_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_execution_id') THEN
+        CREATE INDEX idx_audit_logs_execution_id ON pipeline.audit_logs(execution_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_timestamp') THEN
+        CREATE INDEX idx_audit_logs_timestamp ON pipeline.audit_logs(timestamp DESC);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_level') THEN
+        CREATE INDEX idx_audit_logs_level ON pipeline.audit_logs(level);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_module') THEN
+        CREATE INDEX idx_audit_logs_module ON pipeline.audit_logs(module);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_correlation_id') THEN
+        CREATE INDEX idx_audit_logs_correlation_id ON pipeline.audit_logs(correlation_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_context') THEN
+        CREATE INDEX idx_audit_logs_context ON pipeline.audit_logs USING GIN (context);
+    END IF;
+END $$;
 
--- Índice GIN para búsqueda en JSONB
-CREATE INDEX idx_audit_logs_context ON pipeline.audit_logs USING GIN (context);
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: security.attack_scenarios
 -- Configuraciones de escenarios de ataque
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla security.attack_scenarios...'
 
 CREATE TABLE IF NOT EXISTS security.attack_scenarios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -140,7 +264,6 @@ CREATE TABLE IF NOT EXISTS security.attack_scenarios (
     description TEXT,
     attack_types TEXT[] NOT NULL,
     config JSONB NOT NULL DEFAULT '{}',
-    created_by VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
@@ -149,18 +272,29 @@ CREATE TABLE IF NOT EXISTS security.attack_scenarios (
 );
 
 -- Índices
-CREATE INDEX idx_attack_scenarios_name ON security.attack_scenarios(name);
-CREATE INDEX idx_attack_scenarios_created_at ON security.attack_scenarios(created_at DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_attack_scenarios_name') THEN
+        CREATE INDEX idx_attack_scenarios_name ON security.attack_scenarios(name);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_attack_scenarios_created_at') THEN
+        CREATE INDEX idx_attack_scenarios_created_at ON security.attack_scenarios(created_at DESC);
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: security.simulation_results
 -- Resultados de simulaciones de ataques
 -- ============================================
 
+\echo ''
+\echo '[*] Creando tabla security.simulation_results...'
+
 CREATE TABLE IF NOT EXISTS security.simulation_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    scenario_id UUID NOT NULL REFERENCES security.attack_scenarios(id) ON DELETE CASCADE,
-    execution_id UUID REFERENCES pipeline.executions(id) ON DELETE SET NULL,
+    execution_id UUID REFERENCES pipeline.executions(id) ON DELETE CASCADE,
     attack_type VARCHAR(100) NOT NULL,
     start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP WITH TIME ZONE,
@@ -169,13 +303,8 @@ CREATE TABLE IF NOT EXISTS security.simulation_results (
     attempts_blocked INTEGER DEFAULT 0,
     attempts_successful INTEGER DEFAULT 0,
     mttd_avg_ms NUMERIC(10, 2),
-    mttd_p50_ms NUMERIC(10, 2),
-    mttd_p95_ms NUMERIC(10, 2),
-    mttd_p99_ms NUMERIC(10, 2),
-    false_positives INTEGER DEFAULT 0,
     vulnerabilities JSONB DEFAULT '[]',
     security_score NUMERIC(5, 2),
-    report_path TEXT,
     
     CONSTRAINT simulation_results_end_after_start CHECK (
         end_time IS NULL OR end_time >= start_time
@@ -184,8 +313,7 @@ CREATE TABLE IF NOT EXISTS security.simulation_results (
         attempts_total >= 0 AND
         attempts_detected >= 0 AND
         attempts_blocked >= 0 AND
-        attempts_successful >= 0 AND
-        attempts_detected + attempts_blocked + attempts_successful <= attempts_total
+        attempts_successful >= 0
     ),
     CONSTRAINT simulation_results_security_score_range CHECK (
         security_score IS NULL OR (security_score >= 0 AND security_score <= 100)
@@ -193,19 +321,31 @@ CREATE TABLE IF NOT EXISTS security.simulation_results (
 );
 
 -- Índices
-CREATE INDEX idx_simulation_results_scenario_id ON security.simulation_results(scenario_id);
-CREATE INDEX idx_simulation_results_execution_id ON security.simulation_results(execution_id);
-CREATE INDEX idx_simulation_results_attack_type ON security.simulation_results(attack_type);
-CREATE INDEX idx_simulation_results_start_time ON security.simulation_results(start_time DESC);
-CREATE INDEX idx_simulation_results_security_score ON security.simulation_results(security_score DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_simulation_results_execution_id') THEN
+        CREATE INDEX idx_simulation_results_execution_id ON security.simulation_results(execution_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_simulation_results_attack_type') THEN
+        CREATE INDEX idx_simulation_results_attack_type ON security.simulation_results(attack_type);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_simulation_results_start_time') THEN
+        CREATE INDEX idx_simulation_results_start_time ON security.simulation_results(start_time DESC);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_simulation_results_vulnerabilities') THEN
+        CREATE INDEX idx_simulation_results_vulnerabilities ON security.simulation_results USING GIN (vulnerabilities);
+    END IF;
+END $$;
 
--- Índice GIN para búsqueda en vulnerabilidades
-CREATE INDEX idx_simulation_results_vulnerabilities ON security.simulation_results USING GIN (vulnerabilities);
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Tabla: monitoring.metrics
 -- Métricas históricas del sistema
 -- ============================================
+
+\echo ''
+\echo '[*] Creando tabla monitoring.metrics...'
 
 CREATE TABLE IF NOT EXISTS monitoring.metrics (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -221,16 +361,30 @@ CREATE TABLE IF NOT EXISTS monitoring.metrics (
 );
 
 -- Índices para consultas de métricas
-CREATE INDEX idx_metrics_name ON monitoring.metrics(metric_name);
-CREATE INDEX idx_metrics_timestamp ON monitoring.metrics(timestamp DESC);
-CREATE INDEX idx_metrics_name_timestamp ON monitoring.metrics(metric_name, timestamp DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_metrics_name') THEN
+        CREATE INDEX idx_metrics_name ON monitoring.metrics(metric_name);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_metrics_timestamp') THEN
+        CREATE INDEX idx_metrics_timestamp ON monitoring.metrics(timestamp DESC);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_metrics_name_timestamp') THEN
+        CREATE INDEX idx_metrics_name_timestamp ON monitoring.metrics(metric_name, timestamp DESC);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_metrics_labels') THEN
+        CREATE INDEX idx_metrics_labels ON monitoring.metrics USING GIN (labels);
+    END IF;
+END $$;
 
--- Índice GIN para búsqueda en labels
-CREATE INDEX idx_metrics_labels ON monitoring.metrics USING GIN (labels);
+\echo '  ✓ Tabla y índices creados'
 
 -- ============================================
 -- Funciones útiles
 -- ============================================
+
+\echo ''
+\echo '[*] Creando funciones...'
 
 -- Función para actualizar updated_at automáticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -241,100 +395,70 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplicar trigger a tablas con updated_at
-CREATE TRIGGER update_pipelines_updated_at
-    BEFORE UPDATE ON pipeline.pipelines
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+\echo '  ✓ update_updated_at_column()'
 
-CREATE TRIGGER update_attack_scenarios_updated_at
-    BEFORE UPDATE ON security.attack_scenarios
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Aplicar trigger a tablas con updated_at (solo si no existe)
+DO $$
+BEGIN
+    -- Trigger para pipeline.pipelines
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_pipelines_updated_at') THEN
+        CREATE TRIGGER update_pipelines_updated_at
+            BEFORE UPDATE ON pipeline.pipelines
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Trigger para security.attack_scenarios
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_attack_scenarios_updated_at') THEN
+        CREATE TRIGGER update_attack_scenarios_updated_at
+            BEFORE UPDATE ON security.attack_scenarios
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
+
+\echo '  ✓ Triggers aplicados'
 
 -- ============================================
 -- Función para calcular duración de ejecución
 -- ============================================
 
-CREATE OR REPLACE FUNCTION pipeline.calculate_execution_duration(execution_uuid UUID)
-RETURNS INTERVAL AS $$
-DECLARE
-    duration INTERVAL;
-BEGIN
-    SELECT (end_time - start_time) INTO duration
-    FROM pipeline.executions
-    WHERE id = execution_uuid;
-    
-    RETURN duration;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================
--- Vista: pipeline.execution_summary
--- Resumen de ejecuciones con métricas calculadas
--- ============================================
-
-CREATE OR REPLACE VIEW pipeline.execution_summary AS
-SELECT 
-    e.id,
-    e.pipeline_id,
-    p.name AS pipeline_name,
-    e.status,
-    e.start_time,
-    e.end_time,
-    EXTRACT(EPOCH FROM (e.end_time - e.start_time)) AS duration_seconds,
-    e.records_processed,
-    e.records_failed,
-    CASE 
-        WHEN e.records_processed > 0 
-        THEN ROUND((e.records_failed::NUMERIC / e.records_processed * 100), 2)
-        ELSE 0
-    END AS failure_rate_percent,
-    e.metrics,
-    e.error_message
-FROM pipeline.executions e
-JOIN pipeline.pipelines p ON e.pipeline_id = p.id;
-
--- ============================================
--- Vista: security.security_posture
--- Resumen de postura de seguridad
--- ============================================
-
-CREATE OR REPLACE VIEW security.security_posture AS
-SELECT 
-    attack_type,
-    COUNT(*) AS total_simulations,
-    ROUND(AVG(security_score), 2) AS avg_security_score,
-    ROUND(AVG(attempts_detected::NUMERIC / NULLIF(attempts_total, 0) * 100), 2) AS avg_detection_rate,
-    ROUND(AVG(mttd_avg_ms), 2) AS avg_mttd_ms,
-    SUM(attempts_successful) AS total_successful_attacks,
-    MAX(start_time) AS last_simulation_date
-FROM security.simulation_results
-WHERE attempts_total > 0
-GROUP BY attack_type;
+-- Funciones y vistas eliminadas - no se usan en el código actual
 
 -- ============================================
 -- Datos de prueba (opcional - solo para desarrollo)
 -- ============================================
 
--- Pipeline de ejemplo
-INSERT INTO pipeline.pipelines (name, description, config, created_by)
+\echo ''
+\echo '[*] Insertando datos de ejemplo...'
+
+-- Pipeline de ejemplo (con ON CONFLICT para re-ejecuciones)
+INSERT INTO pipeline.pipelines (name, description, config)
 VALUES (
     'example_pipeline',
     'Pipeline de ejemplo para validación inicial',
-    '{"source": "postgresql", "validations": ["not_null", "unique"]}'::jsonb,
-    'system'
-) ON CONFLICT (name) DO NOTHING;
+    '{"source": "postgresql", "validations": ["not_null", "unique"]}'::jsonb
+) ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description,
+    config = EXCLUDED.config,
+    updated_at = CURRENT_TIMESTAMP;
 
--- Escenario de ataque de ejemplo
-INSERT INTO security.attack_scenarios (name, description, attack_types, config, created_by)
+\echo '  ✓ Pipeline de ejemplo'
+
+-- Escenario de ataque de ejemplo (con ON CONFLICT)
+INSERT INTO security.attack_scenarios (name, description, attack_types, config)
 VALUES (
     'sql_injection_basic',
     'Escenario básico de prueba de inyección SQL',
     ARRAY['sql_injection'],
-    '{"payloads": ["boolean_based", "union_based"], "frequency": "5/min"}'::jsonb,
-    'system'
-) ON CONFLICT (name) DO NOTHING;
+    '{"payloads": ["boolean_based", "union_based"], "frequency": "5/min"}'::jsonb
+) ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description,
+    attack_types = EXCLUDED.attack_types,
+    config = EXCLUDED.config,
+    updated_at = CURRENT_TIMESTAMP;
+
+\echo '  ✓ Escenario de ataque de ejemplo'
 
 -- ============================================
 -- Permisos (opcional - ajustar según necesidad)
@@ -353,11 +477,44 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA monitoring TO PUBLI
 -- Mensaje de confirmación
 -- ============================================
 
+\echo ''
+\echo '============================================'
+\echo 'Base de datos inicializada correctamente'
+\echo '============================================'
+\echo ''
+\echo 'Esquemas creados: pipeline, security, monitoring'
+\echo 'Tablas creadas: 7 tablas principales'
+\echo 'Funciones creadas: 1 función auxiliar (update_updated_at)'
+\echo 'Datos de ejemplo: 2 registros insertados'
+\echo ''
+\echo '✓ El script es idempotente y puede ejecutarse múltiples veces'
+\echo ''
+\echo 'Siguiente paso:'
+\echo '  python scripts/generate_sample_data.py'
+\echo '  o'
+\echo '  python scripts/setup_environment.py'
+\echo ''
+
+-- Resumen en formato de consulta
 DO $$
+DECLARE
+    tabla_count INTEGER;
+    funcion_count INTEGER;
 BEGIN
-    RAISE NOTICE 'Base de datos inicializada correctamente';
-    RAISE NOTICE 'Esquemas creados: pipeline, security, monitoring';
-    RAISE NOTICE 'Tablas creadas: 9 tablas principales';
-    RAISE NOTICE 'Vistas creadas: 2 vistas de resumen';
-    RAISE NOTICE 'Funciones creadas: 2 funciones auxiliares';
+    -- Contar tablas
+    SELECT COUNT(*) INTO tabla_count
+    FROM information_schema.tables
+    WHERE table_schema IN ('pipeline', 'security', 'monitoring')
+    AND table_type = 'BASE TABLE';
+    
+    -- Contar funciones
+    SELECT COUNT(*) INTO funcion_count
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public'
+    AND p.proname = 'update_updated_at_column';
+    
+    RAISE NOTICE 'Estadísticas finales:';
+    RAISE NOTICE '  - Tablas: %', tabla_count;
+    RAISE NOTICE '  - Funciones: %', funcion_count;
 END $$;

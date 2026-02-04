@@ -1,0 +1,138 @@
+# examples/infection_config.yml
+# ============================================================================
+# CONFIGURACIÓN DE INFECCIÓN DE DATOS
+# ============================================================================
+#
+# Este archivo define cómo infectar datos ANTES de ejecutar el pipeline.
+#
+# FLUJO:
+#   1. Este script lee datos limpios (input)
+#   2. Aplica ataques configurados aquí
+#   3. Guarda datos infectados (output)
+#   4. El pipeline lee los datos infectados
+#   5. Validation detecta los problemas
+#
+# BASADO EN OWASP TOP 10 PARA DATA SECURITY
+# ============================================================================
+
+# ENTRADA: Datos limpios originales
+input:
+  path: "data/samples/customers.csv"
+
+# SALIDA: Datos infectados
+output:
+  path: "data/output/customers_infected.csv"
+
+# Semilla para reproducibilidad (opcional)
+random_seed: 42
+
+# Tasa global de infección (si no se especifica por ataque)
+global_rate: 0.10  # 10% de filas afectadas por defecto
+
+# ============================================================================
+# ATAQUES A APLICAR
+# ============================================================================
+attacks:
+  
+  # -------------------------------------------------------------------------
+  # OWASP #1: DATA POISONING
+  # Valores maliciosos que sesgan análisis
+  # -------------------------------------------------------------------------
+  - type: data_poisoning
+    columns: ['lifetime_value', 'email']  # Columnas específicas
+    rate: 0.1  # 10% de filas afectadas
+    
+  # -------------------------------------------------------------------------
+  # OWASP #2: SCHEMA MANIPULATION  
+  # Cambios inesperados de tipo de dato
+  # -------------------------------------------------------------------------
+  - type: schema_manipulation
+    columns: ['customer_id']
+    rate: 0.06
+    
+  # -------------------------------------------------------------------------
+  # OWASP #3: INJECTION ATTACKS
+  # SQL, NoSQL, Command Injection payloads
+  # -------------------------------------------------------------------------
+  - type: injection
+    columns: ['name', 'address']
+    rate: 0.15
+    
+  # -------------------------------------------------------------------------
+  # OWASP #4: MISSING DATA
+  # Valores nulos estratégicos
+  # -------------------------------------------------------------------------
+  - type: missing_data
+    columns: ['email', 'phone']
+    rate: 0.08
+    
+  # -------------------------------------------------------------------------
+  # OWASP #5: OUTLIERS EXTREMOS
+  # Valores que sesgan estadísticas
+  # -------------------------------------------------------------------------
+  - type: outliers
+    columns: ['lifetime_value']
+    rate: 0.09
+    
+  # -------------------------------------------------------------------------
+  # OWASP #6: DUPLICATES
+  # Registros duplicados que inflan conteos
+  # -------------------------------------------------------------------------
+  - type: duplicates
+    columns: []  # Se duplican filas completas
+    rate: 0.03
+    
+  # -------------------------------------------------------------------------
+  # OWASP #7: DATA LEAKAGE
+  # Exposición de información sensible
+  # -------------------------------------------------------------------------
+  - type: data_leakage
+    columns: ['address']
+    rate: 0.02
+    
+  # -------------------------------------------------------------------------
+  # OWASP #8: INCONSISTENCIAS
+  # Formatos/valores inconsistentes
+  # -------------------------------------------------------------------------
+  - type: inconsistency
+    columns: ['email', 'registration_date']
+    rate: 0.04
+    
+  # -------------------------------------------------------------------------
+  # OWASP #9: FORMAT CORRUPTION
+  # Corrupción de formato
+  # -------------------------------------------------------------------------
+  - type: format_corruption
+    columns: ['name']
+    rate: 0.03
+    
+  # -------------------------------------------------------------------------
+  # OWASP #10: TIMING ATTACKS
+  # Manipulación de timestamps
+  # -------------------------------------------------------------------------
+  - type: timing
+    columns: ['registration_date', 'last_login']
+    rate: 0.02
+
+# ============================================================================
+# CONFIGURACIONES ESPECIALES
+# ============================================================================
+
+# Usar columnas aleatorias (en lugar de especificar)
+# - type: data_poisoning
+#   columns: random
+#   num_random_columns: 2
+#   rate: 0.10
+
+# Múltiples ataques al mismo campo
+# - type: missing_data
+#   columns: ['email']
+#   rate: 0.05
+# - type: injection
+#   columns: ['email']
+#   rate: 0.03
+
+# Tasa variable por ataque
+# - type: outliers
+#   columns: ['amount']
+#   rate: 0.15  # 15% de outliers extremos

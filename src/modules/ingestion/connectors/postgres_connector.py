@@ -31,7 +31,7 @@ class PostgreSQLConnector(DataSourceConnector):
         Args:
             config: Debe contener:
                 - host: Hostname de PostgreSQL
-                - port: Puerto (default: 5440)
+                - port: Puerto (default: 5432)
                 - database: Nombre de la base de datos
                 - user: Usuario
                 - password: Contraseña
@@ -47,18 +47,18 @@ class PostgreSQLConnector(DataSourceConnector):
             if self.mode == "psycopg2":
                 self.connection = psycopg2.connect(
                     host=self.config["host"],
-                    port=self.config.get("port", 5440),
+                    port=self.config.get("port", 5432),
                     database=self.config["database"],
                     user=self.config["user"],
                     password=self.config["password"],
                     connect_timeout=10
                 )
-                logger.info(f"Connected to PostgreSQL via psycopg2: {self.config['host']}:{self.config.get('port', 5440)}")
+                logger.info(f"Connected to PostgreSQL via psycopg2: {self.config['host']}:{self.config.get('port', 5432)}")
             
             elif self.mode == "sqlalchemy":
                 db_url = (
                     f"postgresql://{self.config['user']}:{self.config['password']}"
-                    f"@{self.config['host']}:{self.config.get('port', 5440)}"
+                    f"@{self.config['host']}:{self.config.get('port', 5432)}"
                     f"/{self.config['database']}"
                 )
                 self.engine = create_engine(db_url, pool_pre_ping=True)
@@ -66,7 +66,7 @@ class PostgreSQLConnector(DataSourceConnector):
                 with self.engine.connect() as conn:
                     conn.execute(text("SELECT 1"))
                     
-                logger.info(f"Connected to PostgreSQL via SQLAlchemy: {self.config['host']}:{self.config.get('port', 5440)}")
+                logger.info(f"Connected to PostgreSQL via SQLAlchemy: {self.config['host']}:{self.config.get('port', 5432)}")
             
             self.connected = True
             return True
@@ -204,7 +204,7 @@ class PostgreSQLConnector(DataSourceConnector):
 # Factory function para facilitar creación
 def create_postgres_connector(
     host: str = "localhost",
-    port: int = 5440,
+    port: int = 5432,
     database: str = "pipeline_db",
     user: str = "admin",
     password: str = "secret_password",
@@ -215,7 +215,7 @@ def create_postgres_connector(
     
     Args:
         host: Hostname de PostgreSQL
-        port: Puerto (default: 5440 - tu puerto personalizado)
+        port: Puerto (default: 5432 - tu puerto personalizado)
         database: Nombre de la base de datos
         user: Usuario
         password: Contraseña

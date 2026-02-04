@@ -1,0 +1,384 @@
+# examples/complete_pipeline.yml
+# ============================================================================
+# Data Pipeline - Complete Configuration
+# ============================================================================
+
+pipeline:
+  name: "CustomerDataPipeline"
+  version: "2.0.0"
+  description: "Customer data processing pipeline with security validation"
+  tags: ["customers", "v2.0", "production"]
+  schedule: "@daily"
+
+# ============================================================================
+# STAGE 1: INGESTION
+# ============================================================================
+ingestion:
+  sources:
+    - name: "customers_csv"
+      type: "csv"
+      path: "data/output/customers_infected.csv"
+      output_dataset: "raw_customers"
+      options:
+        encoding: "utf-8"
+        delimiter: ","
+    
+    - name: "transactions_csv"
+      type: "csv"
+      path: "data/samples/transactions.csv"
+      output_dataset: "raw_transactions"
+
+# ============================================================================
+# STAGE 2: VALIDATION
+# ============================================================================
+validation:
+  schema_validation:
+    - dataset: "raw_customers"
+      schema_path: "schemas/customers_schema.py"
+      fail_on_error: true
+  
+  expectations:
+    # Data Quality Suite
+    - dataset: "raw_customers"
+      suite_name: "basic_quality_suite"
+      expectations:
+        - expectation_type: "expect_column_values_to_not_be_null"
+          column: "customer_id"
+        
+        - expectation_type: "expect_column_values_to_be_unique"
+          column: "customer_id"
+        
+        - expectation_type: "expect_column_values_to_be_of_type"
+          column: "customer_id"
+          type_: "string"
+        
+        - expectation_type: "expect_column_values_to_not_be_null"
+          column: "name"
+        
+        - expectation_type: "expect_column_value_lengths_to_be_between"
+          column: "name"
+          min_value: 2
+          max_value: 100
+        
+        - expectation_type: "expect_column_values_to_match_regex"
+          column: "name"
+          regex: "^[A-Za-zÀ-ÿ\\s.'-]+$"
+        
+        - expectation_type: "expect_column_values_to_not_be_null"
+          column: "email"
+        
+        - expectation_type: "expect_column_values_to_match_regex"
+          column: "email"
+          regex: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+        
+        - expectation_type: "expect_column_proportion_of_unique_values_to_be_between"
+          column: "email"
+          min_value: 0.95
+          max_value: 1.0
+        
+        - expectation_type: "expect_column_value_lengths_to_be_between"
+          column: "email"
+          min_value: 5
+          max_value: 100
+        
+        - expectation_type: "expect_column_to_exist"
+          column: "phone"
+        
+        - expectation_type: "expect_column_values_to_match_regex_list"
+          column: "phone"
+          regex_list: 
+            - "^\\+?\\d{1,3}[-.\\s]?\\(?\\d{1,4}\\)?[-.\\s]?\\d{1,4}[-.\\s]?\\d{1,9}$"
+            - "^\\d{3}-\\d{3}-\\d{4}$"
+            - "^\\(\\d{3}\\)\\s?\\d{3}-\\d{4}$"
+          match_on: "any"
+        
+        - expectation_type: "expect_column_value_lengths_to_be_between"
+          column: "address"
+          min_value: 5
+          max_value: 200
+          mostly: 0.9
+        
+        - expectation_type: "expect_column_values_to_not_be_null"
+          column: "account_status"
+        
+        - expectation_type: "expect_column_values_to_be_in_set"
+          column: "account_status"
+          value_set: ["active", "suspended"]
+        
+        - expectation_type: "expect_column_values_to_be_between"
+          column: "lifetime_value"
+          min_value: 0
+          max_value: 10000000
+        
+        - expectation_type: "expect_column_mean_to_be_between"
+          column: "lifetime_value"
+          min_value: 100
+          max_value: 50000
+        
+        - expectation_type: "expect_column_stdev_to_be_between"
+          column: "lifetime_value"
+          min_value: 0
+          max_value: 100000
+    
+    # Security Detection Suite (16 validaciones OWASP Top 10)
+    - dataset: "raw_customers"
+      suite_name: "security_detection_suite"
+      expectations:
+        # === SQL INJECTION DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:--|;|union|select|insert|update|delete|drop|exec)"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "email"
+          regex: "(?:--|'|admin')"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "(?:union|drop|delete|exec)"
+        
+        # === NOSQL INJECTION DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:\\$ne|\\$gt|\\$lt|\\$where)"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "email"
+          regex: "(?:\\$eq|\\$ne|\\$in)"
+        
+        # === XSS DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:<script|javascript:|onerror|onload)"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "(?:<script|javascript:|alert|document\\.)"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "email"
+          regex: "(?:<|>|javascript:)"
+        
+        # === COMMAND INJECTION DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "(?:\\||&&|;|`)"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:\\||&&|;|rm )"
+        
+        # === LDAP INJECTION DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:\\*|\\(?:|\\))"
+        
+        # === XML INJECTION DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "(?:&lt;|&gt;|<!CDATA|<!DOCTYPE)"
+        
+        # === PATH TRAVERSAL DETECTION ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "(\\.\\./|\\.\\.\\\\"
+        
+        # === SENSITIVE DATA LEAKAGE ===
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "\\d{4}[\\s-]\\d{4}[\\s-]\\d{4}[\\s-]\\d{4}"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "address"
+          regex: "\\d{3}-\\d{2}-\\d{4}"
+        
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "(?:PRIVATE.*KEY|api.*key|secret|token|password)"
+    
+    # ========================================================================
+    # SUITE 3: DETECCIÓN DE ANOMALÍAS Y OUTLIERS
+    # ========================================================================
+    - dataset: "raw_customers"
+      suite_name: "anomaly_detection_suite"
+      expectations:
+        # === OUTLIERS NUMÉRICOS ===
+        
+        # 36. age: Sin valores extremos imposibles
+        - expectation_type: "expect_column_values_to_be_between"
+          column: "age"
+          min_value: 0
+          max_value: 150
+        
+        # 37. lifetime_value: Sin outliers extremos (Z-score)
+        - expectation_type: "expect_column_values_to_be_between"
+          column: "lifetime_value"
+          min_value: -1000  # Permitir valores negativos (puede indicar devoluciones)
+          max_value: 50000000  # 50 millones como límite superior extremo
+        
+        # 38. age: Valores entre percentiles razonables
+        - expectation_type: "expect_column_quantile_values_to_be_between"
+          column: "age"
+          quantile_ranges:
+            quantiles: [0.05, 0.95]
+            value_ranges: [[18, 25], [60, 100]]
+        
+        # 39. lifetime_value: Valores entre percentiles controlados
+        - expectation_type: "expect_column_quantile_values_to_be_between"
+          column: "lifetime_value"
+          quantile_ranges:
+            quantiles: [0.05, 0.95]
+            value_ranges: [[0, 10000], [50000, 500000]]
+        
+        # === DUPLICADOS COMPLETOS ===
+        
+        # 40. Sin duplicados exactos (email + phone)
+        - expectation_type: "expect_compound_columns_to_be_unique"
+          column_list: ["email", "phone"]
+        
+        # 41. Sin duplicados exactos (name + address)
+        - expectation_type: "expect_compound_columns_to_be_unique"
+          column_list: ["name", "address"]
+        
+        # === FORMATO CORRUPTO ===
+        
+        # 42. email: Sin caracteres no imprimibles
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "email"
+          regex: "[\\x00-\\x1F\\x7F-\\x9F]"
+        
+        # 43. name: Sin caracteres de control
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"
+        
+        # 44. phone: Sin caracteres alfabéticos (solo números y símbolos)
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "phone"
+          regex: "[a-zA-Z]"
+        
+        # === VALORES SOSPECHOSOS ===
+        
+        # 45. email: Sin emails de testing/dummy
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "email"
+          regex: "(?:test@|dummy@|fake@|example\\.com|localhost)"
+        
+        # 46. name: Sin valores placeholder
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "name"
+          regex: "^(?:test|dummy|fake|admin|user|customer|placeholder|N/A|null|undefined)$"
+        
+        # 47. phone: Sin valores dummy (000-000-0000, etc.)
+        - expectation_type: "expect_column_values_to_not_match_regex"
+          column: "phone"
+          regex: "^(?:000-000-0000|111-111-1111|123-123-1234|999-999-9999)$"
+    
+    # ========================================================================
+    # SUITE 4: VALIDACIONES DE RELACIONES Y REGLAS DE NEGOCIO
+    # ========================================================================
+    - dataset: "raw_customers"
+      suite_name: "business_rules_suite"
+      expectations:
+        # === CONSISTENCIA DE DATOS ===
+        
+        # 48. Clientes activos deben tener email válido
+        - expectation_type: "expect_column_values_to_not_be_null"
+          column: "email"
+          row_condition: "status == 'active'"
+        
+        # 49. Clientes con lifetime_value > 10000 deben estar activos
+        - expectation_type: "expect_column_values_to_be_in_set"
+          column: "status"
+          value_set: ["active"]
+          row_condition: "lifetime_value > 10000"
+        
+        # === DISTRIBUCIÓN DE VALORES ===
+        
+        # 50. Al menos 50% de clientes deben estar activos
+        - expectation_type: "expect_column_values_to_be_in_set"
+          column: "status"
+          value_set: ["active"]
+          mostly: 0.5
+        
+        # 51. Máximo 10% de clientes suspendidos
+        - expectation_type: "expect_column_values_to_not_be_in_set"
+          column: "status"
+          value_set: ["suspended"]
+          mostly: 0.9
+        
+        # === VALIDACIONES DE TABLA COMPLETA ===
+        
+        # 52. Número mínimo de registros (evita datasets vacíos)
+        - expectation_type: "expect_table_row_count_to_be_between"
+          min_value: 1
+          max_value: 100000000
+        
+        # 53. Número de columnas esperado
+        - expectation_type: "expect_table_column_count_to_equal"
+          value: 7  # customer_id, name, email, phone, address, status, age, lifetime_value
+        
+        # 54. Columnas obligatorias deben existir
+        - expectation_type: "expect_table_columns_to_match_ordered_list"
+          column_list: ["customer_id", "name", "email", "phone", "address", "status", "age", "lifetime_value"]
+          exact_match: true
+
+# ============================================================================
+# STAGE 3: TRANSFORMATION
+# ============================================================================
+transformation:
+  - input_dataset: "raw_customers"
+    output_dataset: "active_customers"
+    operations:
+      - type: "filter"
+        condition: "account_status == 'active'"
+  
+  - input_dataset: "active_customers"
+    output_dataset: "customers_enriched"
+    operations:
+      - type: "derive"
+        new_column: "customer_segment"
+        expression: "pd.cut(lifetime_value, bins=[0, 1000, 5000, 100000], labels=['low', 'medium', 'high'])"
+      
+      - type: "transform"
+        column: "name"
+        expression: "str.title()"
+
+# ============================================================================
+# STAGE 4: OUTPUT
+# ============================================================================
+output:
+  - name: "export_active_customers_csv"
+    input_dataset: "active_customers"
+    type: "csv"
+    path: "data/output/active_customers.csv"
+  
+  - name: "export_enriched_excel"
+    input_dataset: "customers_enriched"
+    type: "excel"
+    path: "data/output/customers_enriched.xlsx"
+  
+  - name: "save_to_postgres"
+    input_dataset: "customers_enriched"
+    type: "postgres"
+    schema: "sample_data"
+    table: "customers_processed"
+    if_exists: "replace"
+  
+  - name: "export_parquet"
+    input_dataset: "customers_enriched"
+    type: "parquet"
+    path: "data/output/customers_enriched.parquet"
+
+# ============================================================================
+# AIRFLOW CONFIGURATION
+# ============================================================================
+airflow:
+  dag_id: "customer_data_pipeline_v2"
+  default_args:
+    owner: "data_team"
+    depends_on_past: false
+    email_on_failure: true
+    email_on_retry: false
+    retries: 2
+    retry_delay_minutes: 5
