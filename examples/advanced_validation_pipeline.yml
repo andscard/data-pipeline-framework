@@ -1,0 +1,342 @@
+# Pipeline Avanzado - Sistema de Validación Completo
+# Demuestra 40+ tipos, validaciones de seguridad OWASP, compliance, y reglas de negocio
+
+name: "pipeline_validacion_avanzada"
+description: "Demostración completa de validaciones: Seguridad, Calidad, Integridad, Compliance"
+
+stages:
+  # ====================================================================================
+  # STAGE 1: INGESTION
+  # ====================================================================================
+  - name: "ingest_user_data"
+    type: "ingestion"
+    params:
+      connector_type: "csv"
+      source: "./data/samples/users_with_security_data.csv"
+      output_dataset: "raw_users"
+      options:
+        delimiter: ","
+        encoding: "utf-8"
+
+  # ====================================================================================
+  # STAGE 2: VALIDATION (SCHEMA SIMPLIFICADA - PRODUCTION READY)
+  # ====================================================================================
+  - name: "advanced_validation"
+    type: "validation"
+    params:
+      mode: "simple"  # Usa nueva arquitectura simplificada
+      
+      # ============================================================================
+      # SCHEMA: Definición por tipos semánticos
+      # ============================================================================
+      schema:
+        raw_users:
+          quality_threshold: 0.98  # 98% de los datos deben cumplir
+          
+          columns:
+            # ============ IDENTIFICADORES ============
+            user_id:
+              type: uuid
+              required: true
+              unique: true
+              
+            account_number:
+              type: id
+              required: true
+              unique: true
+              min: 1000
+              max: 9999999
+            
+            # ============ IDENTIFICACIÓN PERSONAL (PII + COMPLIANCE) ============
+            ssn:
+              type: ssn  # Social Security Number
+              required: false
+              # Automáticamente verifica:
+              # - Formato XXX-XX-XXXX
+              # - Compliance: PII/GDPR
+              # - Severity: CRITICAL
+              
+            dni:
+              type: dni  # DNI español
+              required: false
+              
+            passport_number:
+              type: passport
+              required: false
+            
+            # ============ CONTACTO ============
+            email:
+              type: email
+              required: true
+              unique: true
+              min_length: 5
+              max_length: 254
+              no_test_values: true  # Rechaza test@, dummy@, etc.
+              # Automáticamente aplica:
+              # - Validación formato email
+              # - Anti-pattern: test_email
+              # - Security check: XSS básico
+              
+            phone:
+              type: phone_es  # +34XXXXXXXXX
+              required: true
+              no_test_values: true
+              mostly: 0.95  # 95% deben cumplir formato
+              
+            alternate_phone:
+              type: phone  # Internacional
+              required: false
+            
+            # ============ DATOS WEB Y REDES ============
+            website:
+              type: url_secure  # Solo HTTPS
+              required: false
+              max_length: 2048
+              no_xss: true
+              # Automáticamente aplica:
+              # - Validación HTTPS
+              # - Security checks: XSS, command injection
+              
+            ip_address:
+              type: ipv4
+              required: false
+              no_ssrf: true  # Detecta localhost, 127.0.0.1, internal IPs
+              
+            mac_address:
+              type: mac_address
+              required: false
+            
+            # ============ TEXTO SEGURO ============
+            full_name:
+              type: name
+              required: true
+              min_length: 2
+              max_length: 100
+              no_injection: true  # SQL, NoSQL, Command, LDAP, XPath, etc.
+              no_suspicious_chars: true  # Zero-width, RTL override
+              # Automáticamente aplica:
+              # - Anti-patterns: dummy_name, special_chars_overload
+              # - Security: SQL injection, XSS
+            
+            bio:
+              type: text
+              required: false
+              max_length: 5000
+              no_injection: true
+              no_xss: true
+              no_placeholder: true  # Detecta "Lorem ipsum", "TBD", etc.
+              
+            username:
+              type: slug  # lowercase-with-hyphens
+              required: true
+              unique: true
+              min_length: 3
+              max_length: 50
+            
+            # ============ FINANCIERO (PCI-DSS COMPLIANCE) ============
+            credit_card_last4:
+              type: text  # Solo últimos 4 dígitos
+              required: false
+              min_length: 4
+              max_length: 4
+              # Verificar que NO contenga número completo
+              pci_dss_check: true
+              # Automáticamente detecta:
+              # - Números de tarjeta completos
+              # - Track data
+              # - Severity: CRITICAL
+              
+            iban:
+              type: iban
+              required: false
+              
+            account_balance:
+              type: amount  # Monto monetario
+              required: true
+              min: 0
+              max: 1000000
+              
+            currency:
+              type: currency  # ISO 4217: USD, EUR, GBP
+              required: true
+              values: ["USD", "EUR", "GBP", "MXN", "CAD"]
+            
+            # ============ DIRECCIONES ============
+            postal_code:
+              type: postal_code_es
+              required: false
+              
+            country:
+              type: country_code  # ISO 3166-1 alpha-2
+              required: true
+              values: ["ES", "US", "MX", "GB", "FR", "DE"]
+            
+            # ============ NUMÉRICOS CON VALIDACIONES ESTADÍSTICAS ============
+            age:
+              type: integer
+              required: true
+              min: 18
+              max: 120
+              detect_outliers: true  # Z-score: mean ± 3*std
+              outlier_threshold: 0.99
+              mean_between: [30, 50]  # Media esperada del dataset
+              
+            credit_score:
+              type: integer
+              required: false
+              min: 300
+              max: 850
+              
+            satisfaction_rating:
+              type: percentage  # 0-100
+              required: false
+              min: 0
+              max: 100
+              
+            conversion_probability:
+              type: probability  # 0.0-1.0
+              required: false
+              
+            # ============ CATEGÓRICOS ============
+            account_status:
+              type: status
+              required: true
+              values: ["active", "inactive", "pending", "suspended", "deleted"]
+              
+            subscription_tier:
+              type: enum
+              required: true
+              values: ["free", "basic", "premium", "enterprise"]
+              
+            is_verified:
+              type: boolean
+              required: true
+              
+            # ============ TEMPORALES ============
+            created_at:
+              type: datetime  # ISO 8601
+              required: true
+              
+            updated_at:
+              type: datetime
+              required: true
+              
+            last_login:
+              type: timestamp  # Unix epoch
+              required: false
+              min: 1609459200  # 2021-01-01
+              
+            birthdate:
+              type: date
+              required: true
+              
+            # ============ TÉCNICOS ============
+            preferences:
+              type: json
+              required: false
+              
+            app_version:
+              type: version  # Semantic versioning
+              required: false
+              
+            favorite_color:
+              type: hex_color
+              required: false
+          
+          # ============================================================================
+          # VALIDACIONES CROSS-FIELD (Integridad Referencial)
+          # ============================================================================
+          cross_field_validations:
+            # Fechas: created_at <= updated_at
+            - type: date_range
+              start_column: created_at
+              end_column: updated_at
+              allow_equal: true
+              
+            # Combinación única: email + phone
+            - type: unique_combination
+              columns: [email, phone]
+              
+            # Condicional: Si subscription_tier = "free", entonces account_balance = 0
+            - type: conditional_value
+              condition_column: subscription_tier
+              condition_value: "free"
+              target_column: account_balance
+              allowed_values: [0, 0.0]
+              
+            # Mutually exclusive: SSN o Passport (uno u otro, no ambos)
+            - type: mutual_exclusivity
+              columns: [ssn, passport_number]
+          
+          # ============================================================================
+          # REGLAS DE NEGOCIO
+          # ============================================================================
+          business_rules:
+            # Dataset debe tener mínimo 100 registros
+            - type: minimum_records
+              min_count: 100
+              max_count: 10000000
+              
+            # Al menos 70% deben estar "active"
+            - type: percentage_in_category
+              column: account_status
+              category: "active"
+              percentage: 0.70
+              
+            # Si es premium, balance > 500
+            - type: value_range_by_condition
+              column: account_balance
+              condition: "subscription_tier == 'premium'"
+              min_value: 500
+              
+            # Age debe ser monotónicamente creciente (sorted dataset)
+            - type: trend_monotonic
+              column: user_id
+              direction: increasing
+              allow_equal: false
+  
+  # ====================================================================================
+  # STAGE 3: TRANSFORMATION
+  # ====================================================================================
+  - name: "transform_safe_data"
+    type: "transformation"
+    params:
+      dataset: "raw_users"
+      output_dataset: "clean_users"
+      transformations:
+        - type: "rename_columns"
+          mapping:
+            full_name: "name"
+            account_balance: "balance"
+        
+        - type: "add_column"
+          column_name: "risk_score"
+          expression: "credit_score * conversion_probability"
+  
+  # ====================================================================================
+  # STAGE 4: OUTPUT
+  # ====================================================================================
+  - name: "save_validated_data"
+    type: "output"
+    params:
+      connector_type: "csv"
+      dataset: "clean_users"
+      destination: "./data/output/validated_users.csv"
+      options:
+        index: false
+        encoding: "utf-8"
+
+
+# ====================================================================================
+# LOGGING Y CONFIGURACIÓN
+# ====================================================================================
+logging:
+  level: "INFO"
+  format: "detailed"
+  output: "./logs/advanced_validation.log"
+
+error_handling:
+  on_validation_failure: "stop"  # stop | continue | log
+  max_error_rate: 0.05  # 5%
+  save_failed_records: true
+  failed_records_path: "./data/output/failed_validations.csv"

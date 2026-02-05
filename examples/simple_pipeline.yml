@@ -1,0 +1,226 @@
+# examples/simple_pipeline.yml
+# ============================================================================
+# Data Pipeline - Configuración Simplificada
+# ============================================================================
+# Este ejemplo muestra la sintaxis SIMPLIFICADA para validaciones.
+# En lugar de escribir expectativas verbosas de Great Expectations,
+# defines tipos de columnas y el framework genera las validaciones automáticamente.
+
+pipeline:
+  name: "CustomerDataPipeline"
+  description: "Customer data processing with simplified validation"
+  schedule: "@daily"
+
+# ============================================================================
+# STAGE 1: INGESTION
+# ============================================================================
+ingestion:
+  sources:
+    - name: "customers_postgres"
+      type: "postgres"
+      query: "SELECT * FROM sample_data.customers"
+      output_dataset: "raw_customers"
+      connection:
+        host: "${POSTGRES_HOST}"
+        port: "${POSTGRES_PORT}"
+        database: "${POSTGRES_DB}"
+        user: "${POSTGRES_USER}"
+        password: "${POSTGRES_PASSWORD}"
+    
+    - name: "transactions_csv"
+      type: "csv"
+      path: "data/samples/transactions.csv"
+      output_dataset: "raw_transactions"
+
+# ============================================================================
+# STAGE 2: VALIDATION - SINTAXIS SIMPLIFICADA
+# ============================================================================
+# Define el schema de cada dataset con tipos semánticos.
+# El framework genera automáticamente todas las expectativas necesarias.
+# ============================================================================
+
+validation:
+  # Opción 1: Schema simplificado (RECOMENDADO)
+  schema:
+    raw_customers:
+      columns:
+        # UUID: Automáticamente valida formato UUID y unicidad
+        customer_id:
+          type: uuid
+          required: true
+          unique: true
+        
+        # Nombre: Valida longitud y opcionalmente inyección
+        name:
+          type: name
+          required: true
+          min_length: 3
+          max_length: 100
+          no_injection: true  # Detecta SQL, XSS, Command Injection
+        
+        # Email: Valida formato, unicidad y detecta emails de prueba
+        email:
+          type: email
+          required: true
+          unique: true
+          min_length: 5
+          max_length: 100
+          no_test_values: true  # Rechaza test@, dummy@, example.com
+        
+        # Teléfono español: Valida formato +34XXXXXXXXX
+        phone:
+          type: phone_es
+          required: false
+          mostly: 0.9  # 90% deben cumplir (permite algunos nulos o mal formato)
+        
+        # Dirección: Texto con validaciones de seguridad
+        address:
+          type: text
+          min_length: 10
+          max_length: 200
+          mostly: 0.9
+          no_injection: true
+          no_sensitive_data: true  # Detecta tarjetas, SSN, API keys
+        
+        # Fechas: Valida que sean fechas válidas
+        registration_date:
+          type: date
+          required: true
+          mostly: 0.99
+        
+        last_login:
+          type: datetime
+          required: false
+          mostly: 0.95
+        
+        # Enum: Lista cerrada de valores permitidos
+        account_status:
+          type: enum
+          values: ["active", "suspended", "inactive"]
+          required: true
+        
+        # Numérico: Valida rangos y media esperada
+        lifetime_value:
+          type: numeric
+          min: 0
+          max: 10000
+          mean_between: [1000, 8000]  # Media esperada entre 1000 y 8000
+          required: true
+  
+  # Opción 2: Validaciones custom adicionales (OPCIONAL)
+  # Usa esta sección para validaciones que no cubre el schema
+  custom_validations:
+    - dataset: "raw_customers"
+      suite_name: "09_reglas_negocio"
+      expectations:
+        # Al menos 50% clientes activos
+        - expectation_type: "expect_column_values_to_be_in_set"
+          column: "account_status"
+          value_set: ["active"]
+          mostly: 0.5
+        
+        # Máximo 20% suspendidos
+        - expectation_type: "expect_column_values_to_not_be_in_set"
+          column: "account_status"
+          value_set: ["suspended"]
+          mostly: 0.8
+        
+        # Detección de outliers en quantiles
+        - expectation_type: "expect_column_quantile_values_to_be_between"
+          column: "lifetime_value"
+          quantile_ranges:
+            quantiles: [0.01, 0.99]
+            value_ranges: [[0, 200], [8000, 12000]]
+
+# ============================================================================
+# STAGE 3: TRANSFORMATION
+# ============================================================================
+transformation:
+  - input_dataset: "raw_customers"
+    output_dataset: "active_customers"
+    operations:
+      - type: "filter"
+        condition: "account_status == 'active'"
+  
+  - input_dataset: "active_customers"
+    output_dataset: "customers_enriched"
+    operations:
+      - type: "derive"
+        new_column: "customer_segment"
+        expression: "pd.cut(lifetime_value, bins=[0, 1000, 5000, 7000], labels=['low', 'medium', 'high'])"
+      
+      - type: "transform"
+        column: "name"
+        expression: "str.title()"
+
+# ============================================================================
+# STAGE 4: OUTPUT
+# ============================================================================
+output:
+  - name: "export_active_customers_csv"
+    input_dataset: "active_customers"
+    type: "csv"
+    path: "data/output/active_customers.csv"
+  
+  - name: "export_enriched_excel"
+    input_dataset: "customers_enriched"
+    type: "excel"
+    path: "data/output/customers_enriched.xlsx"
+  
+  - name: "save_to_postgres"
+    input_dataset: "customers_enriched"
+    type: "postgres"
+    schema: "sample_data"
+    table: "customers_processed"
+    if_exists: "replace"
+  
+  - name: "export_parquet"
+    input_dataset: "customers_enriched"
+    type: "parquet"
+    path: "data/output/customers_enriched.parquet"
+
+# ============================================================================
+# AIRFLOW CONFIGURATION
+# ============================================================================
+airflow:
+  dag_id: "customer_data_pipeline_simple"
+  default_args:
+    owner: "data_team"
+    depends_on_past: false
+    email_on_failure: true
+    email_on_retry: false
+    retries: 2
+    retry_delay_minutes: 5
+
+# ============================================================================
+# TIPOS DE COLUMNAS DISPONIBLES
+# ============================================================================
+# - uuid: UUID v4 válido, único por defecto
+# - email: Formato email válido
+# - phone_es: Teléfono español (+34XXXXXXXXX)
+# - phone: Teléfono genérico internacional
+# - name: Nombre de persona (2-100 caracteres)
+# - text: Texto libre con longitud configurable
+# - numeric: Números con rangos opcionales
+# - integer: Enteros
+# - float: Decimales
+# - enum: Lista cerrada de valores
+# - date: Fecha (YYYY-MM-DD)
+# - datetime: Fecha y hora
+# - boolean: Booleano (true/false, 0/1)
+# - url: URL válida (http/https)
+# - alphanumeric: Solo letras y números
+#
+# OPCIONES COMUNES:
+# - required: true/false (default: false)
+# - unique: true/false (default: false)
+# - mostly: 0.0-1.0 (porcentaje mínimo que debe cumplir)
+# - min_length: Longitud mínima (text, email, name)
+# - max_length: Longitud máxima
+# - min: Valor mínimo (numeric)
+# - max: Valor máximo (numeric)
+# - mean_between: [min, max] (media esperada para numeric)
+# - values: [lista] (para enum)
+# - no_injection: true (detecta SQL/XSS/Command injection)
+# - no_sensitive_data: true (detecta tarjetas, SSN, API keys)
+# - no_test_values: true (detecta emails/valores de prueba)

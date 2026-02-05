@@ -1,0 +1,268 @@
+# examples/simplified_pipeline.yml
+# ============================================================================
+# Data Pipeline - Simplified User-Friendly Configuration
+# ============================================================================
+# Este archivo usa una sintaxis simplificada que abstrae la complejidad
+# de Great Expectations, permitiendo configuraciones más intuitivas y concisas.
+# ============================================================================
+
+pipeline:
+  name: "CustomerDataPipeline"
+  version: "2.0.0"
+  description: "Customer data processing pipeline with security validation"
+  tags: ["customers", "v2.0", "production"]
+  schedule: "@daily"
+
+# ============================================================================
+# STAGE 1: INGESTION
+# ============================================================================
+ingestion:
+  sources:
+    - name: "customers_postgres"
+      type: "postgres"
+      query: "SELECT * FROM sample_data.customers"
+      output_dataset: "raw_customers"
+      connection:
+        host: "${POSTGRES_HOST}"
+        port: "${POSTGRES_PORT}"
+        database: "${POSTGRES_DB}"
+        user: "${POSTGRES_USER}"
+        password: "${POSTGRES_PASSWORD}"
+    
+    - name: "transactions_csv"
+      type: "csv"
+      path: "data/samples/transactions.csv"
+      output_dataset: "raw_transactions"
+
+# ============================================================================
+# STAGE 2: VALIDATION - SINTAXIS SIMPLIFICADA
+# ============================================================================
+validation:
+  # Nivel de validación global (basic, standard, strict, paranoid)
+  # - basic: solo tipos y nulls
+  # - standard: + formatos y rangos
+  # - strict: + reglas de negocio y outliers
+  # - paranoid: + todas las validaciones de seguridad
+  default_level: "strict"
+  
+  # Configuración de seguridad global
+  security:
+    enabled: true
+    checks:
+      sql_injection: true
+      xss: true
+      nosql_injection: true
+      command_injection: true
+      path_traversal: true
+      sensitive_data_exposure: true
+  
+  # ========================================================================
+  # SCHEMAS DE VALIDACIÓN POR DATASET
+  # ========================================================================
+  schemas:
+    # ========================================================================
+    # DATASET: raw_customers
+    # ========================================================================
+    raw_customers:
+      # Reglas a nivel de tabla
+      table_rules:
+        row_count:
+          min: 1
+          max: 100000000
+          description: "La tabla debe tener al menos 1 registro"
+        
+        column_count: 9
+        
+        column_order: 
+          - customer_id
+          - name
+          - email
+          - phone
+          - address
+          - registration_date
+          - last_login
+          - account_status
+          - lifetime_value
+        
+        unique_combinations:
+          - columns: [email, phone]
+            description: "Combinación de email y teléfono debe ser única"
+      
+      # ========================================================================
+      # DEFINICIÓN DE COLUMNAS CON TIPOS SEMÁNTICOS
+      # ========================================================================
+      columns:
+        # ----------------------------------------------------------------
+        # IDENTIFICADORES
+        # ----------------------------------------------------------------
+        customer_id:
+          type: uuid
+          required: true
+          unique: true
+          description: "Identificador único del cliente en formato UUID"
+        
+        # ----------------------------------------------------------------
+        # DATOS PERSONALES
+        # ----------------------------------------------------------------
+        name:
+          type: person_name
+          required: true
+          min_length: 3
+          max_length: 100
+          description: "Nombre completo del cliente"
+        
+        email:
+          type: email
+          required: true
+          unique: 0.95  # Al menos 95% de valores únicos
+          max_length: 100
+          description: "Email del cliente (debe ser único)"
+        
+        phone:
+          type: phone_es  # Formato español +34
+          required: false
+          nullable: 0.1   # Permite hasta 10% de nulos
+          description: "Teléfono con formato español (+34)"
+        
+        address:
+          type: text
+          required: false
+          min_length: 10
+          max_length: 200
+          nullable: 0.1
+          description: "Dirección postal del cliente"
+        
+        # ----------------------------------------------------------------
+        # FECHAS
+        # ----------------------------------------------------------------
+        registration_date:
+          type: datetime
+          required: true
+          nullable: 0.01  # Permite máximo 1% nulos
+          description: "Fecha de registro del cliente"
+        
+        last_login:
+          type: datetime
+          required: false
+          nullable: 0.05  # Permite hasta 5% nulos
+          description: "Última fecha de login del cliente"
+        
+        # ----------------------------------------------------------------
+        # DATOS DE NEGOCIO
+        # ----------------------------------------------------------------
+        account_status:
+          type: enum
+          values: [active, suspended, inactive]
+          required: true
+          description: "Estado actual de la cuenta del cliente"
+        
+        lifetime_value:
+          type: currency
+          min: 0
+          max: 10000
+          mean_range: [1000, 8000]
+          outlier_detection:
+            enabled: true
+            method: quantile
+            quantiles: [0.01, 0.99]
+            expected_ranges:
+              - [0, 200]      # Q0.01 debe estar entre 0-200
+              - [8000, 12000] # Q0.99 debe estar entre 8000-12000
+          description: "Valor total de vida del cliente (LTV)"
+      
+      # ========================================================================
+      # REGLAS DE NEGOCIO COMPLEJAS
+      # ========================================================================
+      business_rules:
+        # Regla 1: Clientes activos mínimos
+        - name: "minimum_active_customers"
+          description: "Al menos 50% de clientes deben estar activos"
+          metric: percentage_where
+          column: account_status
+          value: active
+          threshold: ">= 50%"
+          severity: critical
+        
+        # Regla 2: Máximo de suspendidos
+        - name: "maximum_suspended_customers"
+          description: "Máximo 20% de clientes suspendidos permitido"
+          metric: percentage_where
+          column: account_status
+          value: suspended
+          threshold: "<= 20%"
+          severity: warning
+        
+        # Regla 3: Clientes de alto valor deben estar activos
+        - name: "high_value_customers_active"
+          description: "Clientes con LTV > 20000 deben tener cuenta activa"
+          when: "lifetime_value > 20000"
+          expect:
+            account_status: [active]
+          severity: critical
+        
+        # Regla 4: Validación temporal lógica
+        - name: "registration_before_last_login"
+          description: "La fecha de registro debe ser anterior al último login"
+          condition: "registration_date <= last_login"
+          applies_to_rows: "last_login IS NOT NULL"
+          severity: error
+
+# ============================================================================
+# STAGE 3: TRANSFORMATION
+# ============================================================================
+transformation:
+  - input_dataset: "raw_customers"
+    output_dataset: "active_customers"
+    operations:
+      - type: "filter"
+        condition: "account_status == 'active'"
+  
+  - input_dataset: "active_customers"
+    output_dataset: "customers_enriched"
+    operations:
+      - type: "derive"
+        new_column: "customer_segment"
+        expression: "pd.cut(lifetime_value, bins=[0, 1000, 5000, 7000], labels=['low', 'medium', 'high'])"
+      
+      - type: "transform"
+        column: "name"
+        expression: "str.title()"
+
+# ============================================================================
+# STAGE 4: OUTPUT
+# ============================================================================
+output:
+  - name: "export_active_customers_csv"
+    input_dataset: "active_customers"
+    type: "csv"
+    path: "data/output/active_customers.csv"
+  
+  - name: "export_enriched_excel"
+    input_dataset: "customers_enriched"
+    type: "excel"
+    path: "data/output/customers_enriched.xlsx"
+  
+  - name: "save_to_postgres"
+    input_dataset: "customers_enriched"
+    type: "postgres"
+    schema: "sample_data"
+    table: "customers_processed"
+    if_exists: "replace"
+  
+  - name: "export_parquet"
+    input_dataset: "customers_enriched"
+    type: "parquet"
+    path: "data/output/customers_enriched.parquet"
+
+# ============================================================================
+# AIRFLOW CONFIGURATION
+# ============================================================================
+airflow:
+  dag_id: "customer_data_pipeline_v2"
+  default_args:
+    owner: "data_team"
+    depends_on_past: false
+    email_on_failure: true
+    email_on_retry: false
+    retries: 2
+    retry_delay_minutes: 5

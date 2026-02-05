@@ -21,6 +21,7 @@ import os
 from src.modules.ingestion.multi_source_loader import MultiSourceLoader
 from src.modules.validation.pandera_validator import PanderaValidator
 from src.modules.validation.ge_validator import GreatExpectationsValidator
+from src.modules.validation.schema_validator import convert_simple_validation_to_ge
 from src.modules.transformation import DataTransformer
 from src.modules.auditing import AuditManager
 from src.modules.monitoring import MonitoringCollector
@@ -324,10 +325,24 @@ class PipelineExecutor:
           1. Validación de esquema (Pandera)
           2. Validación de calidad (Great Expectations)
           3. Detección de ataques OWASP Top 10 (si datos fueron pre-infectados)
+        
+        Soporta dos formatos de configuración:
+          a) Sintaxis simplificada (schema + custom_validations)
+          b) Sintaxis legacy (expectations directas)
         """
         with self.monitoring.track_stage("VALIDATION") as stage:
             # Support both 'quality' (legacy) and 'validation' (new) config keys
             validation_config = self.config.get('validation', self.config.get('quality', {}))
+            
+            # NUEVO: Detectar y convertir sintaxis simplificada
+            if 'schema' in validation_config:
+                logger.info("Detected simplified schema validation syntax - converting to GE expectations")
+                converted_config = convert_simple_validation_to_ge(validation_config)
+                # Merge converted expectations con las existentes
+                validation_config = {
+                    **validation_config,
+                    'expectations': converted_config.get('expectations', [])
+                }
             
             total_validations = 0
             passed_validations = 0

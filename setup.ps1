@@ -185,16 +185,17 @@ Write-Host "  2. Ver estado de la base de datos:" -ForegroundColor White
 Write-Host "     python scripts/db_utils.py status`n" -ForegroundColor Gray
 
 Write-Host "  3. Ejecutar un pipeline de ejemplo:" -ForegroundColor White
-Write-Host "     python -m src.cli run pipeline -c examples/complete_pipeline.yml`n" -ForegroundColor Gray
+Write-Host "     python -m src.cli run pipeline -c examples/simple_pipeline.yml" -ForegroundColor Gray
+Write-Host "     (o usar complete_pipeline.yml para sintaxis completa)`n" -ForegroundColor DarkGray
 
 Write-Host "  4. Ver el reporte HTML generado en:" -ForegroundColor White
 Write-Host "     reports/`n" -ForegroundColor Gray
 
 Write-Host "DOCUMENTACION:`n" -ForegroundColor Cyan
-Write-Host "  - README.md         : Guia rapida de inicio" -ForegroundColor White
-Write-Host "  - docs/DATABASE.md  : Gestion de base de datos (db_utils.py)" -ForegroundColor White
-Write-Host "  - docs/GUIA_COMPLETA.md : Arquitectura y uso avanzado" -ForegroundColor White
-Write-Host "  - examples/         : Ejemplos de configuracion de pipelines`n" -ForegroundColor White
+Write-Host "  - README.md                : Guia completa del framework" -ForegroundColor White
+Write-Host "  - docs/DATABASE.md         : Gestion de base de datos (db_utils.py)" -ForegroundColor White
+Write-Host "  - docs/VALIDATION_TYPES.md : Tipos de validacion simplificada" -ForegroundColor White
+Write-Host "  - examples/                : Ejemplos de configuracion de pipelines`n" -ForegroundColor White
 
 Write-Host "UTILIDADES DB (python scripts/db_utils.py):`n" -ForegroundColor Cyan
 Write-Host "  - Ver estado:         python scripts/db_utils.py status" -ForegroundColor White
