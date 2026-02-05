@@ -21,8 +21,7 @@ class SyntheticDataGenerator:
     Soporta generación de múltiples tipos de datos:
     - Datos personales (nombres, emails, direcciones)
     - Datos de transacciones
-    - Datos de sensores/IoT
-    - Inyección controlada de anomalías
+    - Datos de clientes y productos
     """
     
     def __init__(self, locale: str = 'es_ES', seed: Optional[int] = None):
@@ -133,80 +132,6 @@ class SyntheticDataGenerator:
             logger.warning(f"Unknown column type: {column_type}, using random integers")
             return np.random.randint(0, 100, num_records).tolist()
     
-    def inject_anomalies(
-        self,
-        df: pd.DataFrame,
-        anomaly_rate: float = 0.05,
-        anomaly_types: Optional[List[str]] = None
-    ) -> pd.DataFrame:
-        """
-        Inyectar anomalías controladas en un dataset.
-        
-        Args:
-            df: DataFrame original
-            anomaly_rate: Porcentaje de registros a contaminar (0.0-1.0)
-            anomaly_types: Tipos de anomalías a inyectar:
-                - 'nulls': Valores nulos
-                - 'outliers': Outliers extremos
-                - 'duplicates': Registros duplicados
-                - 'type_errors': Errores de tipo
-                
-        Returns:
-            pd.DataFrame con anomalías inyectadas
-        """
-        if anomaly_types is None:
-            anomaly_types = ['nulls', 'outliers', 'duplicates']
-        
-        df_anomalous = df.copy()
-        num_anomalies = int(len(df) * anomaly_rate)
-        
-        logger.info(f"Injecting {num_anomalies} anomalies ({anomaly_rate*100:.1f}%)")
-        
-        if 'nulls' in anomaly_types:
-            df_anomalous = self._inject_nulls(df_anomalous, num_anomalies // len(anomaly_types))
-        
-        if 'outliers' in anomaly_types:
-            df_anomalous = self._inject_outliers(df_anomalous, num_anomalies // len(anomaly_types))
-        
-        if 'duplicates' in anomaly_types:
-            df_anomalous = self._inject_duplicates(df_anomalous, num_anomalies // len(anomaly_types))
-        
-        logger.info(f"Anomalies injected successfully")
-        
-        return df_anomalous
-    
-    def _inject_nulls(self, df: pd.DataFrame, count: int) -> pd.DataFrame:
-        """Inyectar valores nulos aleatorios"""
-        for _ in range(count):
-            row_idx = np.random.randint(0, len(df))
-            col_idx = np.random.randint(0, len(df.columns))
-            df.iloc[row_idx, col_idx] = None
-        return df
-    
-    def _inject_outliers(self, df: pd.DataFrame, count: int) -> pd.DataFrame:
-        """Inyectar outliers extremos en columnas numéricas"""
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_cols) == 0:
-            return df
-        
-        for _ in range(count):
-            row_idx = np.random.randint(0, len(df))
-            col = np.random.choice(numeric_cols)
-            
-            # Generar outlier: 10x el valor máximo
-            max_val = df[col].max()
-            df.at[row_idx, col] = max_val * 10
-        
-        return df
-    
-    def _inject_duplicates(self, df: pd.DataFrame, count: int) -> pd.DataFrame:
-        """Inyectar registros duplicados"""
-        indices_to_duplicate = np.random.choice(df.index, count, replace=False)
-        duplicates = df.loc[indices_to_duplicate].copy()
-        df = pd.concat([df, duplicates], ignore_index=True)
-        return df
-    
     def generate_customer_data(self, num_customers: int = 1000) -> pd.DataFrame:
         """
         Generar dataset de clientes completo y realista.
@@ -265,34 +190,6 @@ class SyntheticDataGenerator:
         return df
 
 
-    def generate_anomalous_data(self, num_records: int = 500, anomaly_rate: float = 0.10) -> pd.DataFrame:
-        """
-        Generar dataset con anomalías inyectadas para testing.
-        
-        Args:
-            num_records: Número de registros a generar
-            anomaly_rate: Porcentaje de anomalías (0.0-1.0)
-            
-        Returns:
-            pd.DataFrame con datos y anomalías mezcladas
-        """
-        schema = {
-            'id': 'int',
-            'name': 'name',
-            'email': 'email',
-            'amount': 'amount',
-            'date': 'date'
-        }
-        
-        clean_data = self.generate(schema, num_records=num_records)
-        anomalous_data = self.inject_anomalies(
-            clean_data,
-            anomaly_rate=anomaly_rate,
-            anomaly_types=['nulls', 'outliers', 'duplicates']
-        )
-        
-        return anomalous_data
-    
     def save_to_formats(self, df: pd.DataFrame, base_path: Path, formats: List[str] = None) -> Dict[str, bool]:
         """
         Guardar DataFrame en múltiples formatos.

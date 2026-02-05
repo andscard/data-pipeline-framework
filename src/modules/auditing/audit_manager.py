@@ -49,7 +49,10 @@ class AuditManager:
         self,
         name: str,
         description: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        version: str = "1.0.0",
+        owner: Optional[str] = None,
+        tags: Optional[List[str]] = None
     ) -> Optional[str]:
         """
         Registrar un nuevo pipeline en la base de datos.
@@ -58,6 +61,9 @@ class AuditManager:
             name: Nombre del pipeline
             description: Descripción
             config: Configuración completa del pipeline
+            version: Versión del pipeline (semantic versioning)
+            owner: Usuario o equipo responsable
+            tags: Etiquetas para clasificación
             
         Returns:
             UUID del pipeline registrado o None si falla
@@ -66,14 +72,17 @@ class AuditManager:
             with self.connection.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pipeline.pipelines 
-                    (name, description, config)
-                    VALUES (%s, %s, %s)
+                    (name, description, config, version, owner, tags)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (name) DO UPDATE 
                     SET description = EXCLUDED.description,
                         config = EXCLUDED.config,
+                        version = EXCLUDED.version,
+                        owner = EXCLUDED.owner,
+                        tags = EXCLUDED.tags,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING id
-                """, (name, description, json.dumps(config)))
+                """, (name, description, json.dumps(config), version, owner, tags or []))
                 
                 pipeline_id = cursor.fetchone()[0]
                 self.connection.commit()
@@ -89,14 +98,18 @@ class AuditManager:
     def start_execution(
         self,
         pipeline_id: str,
-        execution_type: str = "manual"
+        execution_type: str = "manual",
+        triggered_by: Optional[str] = None,
+        environment: str = "development"
     ) -> Optional[str]:
         """
         Iniciar registro de una ejecución de pipeline.
         
         Args:
             pipeline_id: UUID del pipeline
-            execution_type: Tipo de ejecución (manual, scheduled, triggered)
+            execution_type: Tipo de ejecución (manual, scheduled, triggered, api)
+            triggered_by: Usuario o sistema que inició la ejecución
+            environment: Entorno (development, staging, production)
             
         Returns:
             UUID de la ejecución o None si falla
@@ -105,12 +118,20 @@ class AuditManager:
             with self.connection.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pipeline.executions 
-                    (pipeline_id, status, start_time, metrics)
-                    VALUES (%s, 'running', CURRENT_TIMESTAMP, %s)
+                    (pipeline_id, status, start_time, execution_type, triggered_by, environment, metrics)
+                    VALUES (%s, 'running', CURRENT_TIMESTAMP, %s, %s, %s, %s)
                     RETURNING id
-                """, (pipeline_id, json.dumps({"execution_type": execution_type})))
+                """, (pipeline_id, execution_type, triggered_by, environment, json.dumps({})))
                 
                 execution_id = cursor.fetchone()[0]
+                self.connection.commit()
+                
+                # Incrementar contador de ejecuciones en el pipeline
+                cursor.execute("""
+                    UPDATE pipeline.pipelines 
+                    SET run_count = run_count + 1
+                    WHERE id = %s
+                """, (pipeline_id,))
                 self.connection.commit()
                 
                 logger.info(f"Execution started: {execution_id}")
@@ -128,7 +149,10 @@ class AuditManager:
         records_processed: int = 0,
         records_failed: int = 0,
         error_message: Optional[str] = None,
-        metrics: Optional[Dict[str, Any]] = None
+        metrics: Optional[Dict[str, Any]] = None,
+        stages_summary: Optional[List[Dict]] = None,
+        quality_score: Optional[float] = None,
+        report_path: Optional[str] = None
     ) -> bool:
         """
         Completar registro de ejecución.
@@ -140,6 +164,9 @@ class AuditManager:
             records_failed: Registros que fallaron
             error_message: Mensaje de error si aplica
             metrics: Métricas adicionales de la ejecución
+            stages_summary: Resumen de etapas ejecutadas
+            quality_score: Puntaje de calidad (0-100)
+            report_path: Ruta del reporte HTML generado
             
         Returns:
             True si se actualizó correctamente
@@ -150,10 +177,14 @@ class AuditManager:
                     UPDATE pipeline.executions
                     SET status = %s,
                         end_time = CURRENT_TIMESTAMP,
+                        duration_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - start_time)),
                         records_processed = %s,
                         records_failed = %s,
                         error_message = %s,
-                        metrics = %s
+                        metrics = %s,
+                        stages_summary = %s,
+                        quality_score = %s,
+                        report_path = %s
                     WHERE id = %s
                 """, (
                     status,
@@ -161,8 +192,19 @@ class AuditManager:
                     records_failed,
                     error_message,
                     json.dumps(metrics or {}),
+                    json.dumps(stages_summary or []),
+                    quality_score,
+                    report_path,
                     execution_id
                 ))
+                
+                # Si fue exitosa, actualizar last_run_at en pipeline
+                if status == 'completed':
+                    cursor.execute("""
+                        UPDATE pipeline.pipelines
+                        SET last_run_at = CURRENT_TIMESTAMP
+                        WHERE id = (SELECT pipeline_id FROM pipeline.executions WHERE id = %s)
+                    """, (execution_id,))
                 
                 self.connection.commit()
                 logger.info(f"Execution completed: {execution_id} - {status}")
@@ -180,7 +222,12 @@ class AuditManager:
         rule_type: str,
         passed: bool,
         failed_count: int = 0,
-        failure_details: Optional[List[Dict]] = None
+        failure_details: Optional[List[Dict]] = None,
+        dataset_name: Optional[str] = None,
+        suite_name: Optional[str] = None,
+        total_records: int = 0,
+        severity: str = "error",
+        expectation_type: Optional[str] = None
     ) -> bool:
         """
         Registrar resultado de una regla de validación.
@@ -192,6 +239,11 @@ class AuditManager:
             passed: Si la regla pasó o no
             failed_count: Número de registros que fallaron
             failure_details: Detalles de fallos (lista de dicts)
+            dataset_name: Nombre del dataset validado
+            suite_name: Nombre del suite de validación
+            total_records: Total de registros validados
+            severity: Severidad (critical, error, warning, info)
+            expectation_type: Tipo de expectativa GE
             
         Returns:
             True si se registró correctamente
@@ -200,15 +252,21 @@ class AuditManager:
             with self.connection.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pipeline.validation_results
-                    (execution_id, rule_name, rule_type, passed, failed_count, failure_details)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    (execution_id, rule_name, rule_type, passed, failed_count, failure_details,
+                     dataset_name, suite_name, total_records, severity, expectation_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     execution_id,
                     rule_name,
                     rule_type,
                     passed,
                     failed_count,
-                    json.dumps(failure_details or [])
+                    json.dumps(failure_details or []),
+                    dataset_name,
+                    suite_name,
+                    total_records,
+                    severity,
+                    expectation_type
                 ))
                 
                 self.connection.commit()

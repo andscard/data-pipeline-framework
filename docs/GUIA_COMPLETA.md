@@ -2,31 +2,16 @@
 
 ## 📋 Contenido
 
-1. [Instalación Rápida](#instalación-rápida)
-2. [Arquitectura v2.0](#arquitectura-v20)
-3. [Módulo de Infección](#módulo-de-infección-de-datos)
-4. [Pipeline (3 Etapas)](#pipeline-3-etapas)
-5. [Integración con Airflow](#integración-con-airflow)
-6. [Ejemplos de Uso](#ejemplos-de-uso)
-7. [Base de Datos y Auditoría](#base-de-datos-y-auditoría)
+1. [Arquitectura v2.0](#arquitectura-v20)
+2. [Módulo de Infección](#módulo-de-infección-de-datos)
+3. [Pipeline (3 Etapas)](#pipeline-3-etapas)
+4. [Integración con Airflow](#integración-con-airflow)
+5. [Ejemplos de Uso](#ejemplos-de-uso)
+6. [Base de Datos y Auditoría](#base-de-datos-y-auditoría)
 
 ---
 
-## 🚀 Instalación Rápida
-
-```bash
-# 1. Instalar dependencias
-pip install -r requirements.txt
-
-# 2. Configurar PostgreSQL (Docker)
-docker-compose up -d postgres
-
-# 3. Inicializar base de datos
-docker exec -i framework_postgres psql -U admin -d pipeline_db < scripts/init_db.sql
-
-# 4. Probar instalación
-python scripts/demo_new_architecture.py
-```
+> **📘 Instalación:** Para instrucciones completas de configuración, usar [README.md](../README.md#instalación-rápida-automatizada) o ejecutar `setup.ps1`
 
 ---
 
@@ -349,7 +334,7 @@ python -m src.cli infect -c examples/infection_config.yml
 python -m src.cli run pipeline -n SecurityTestPipeline
 
 # 4. Ver resultados
-psql -U admin -d pipeline_db -c "
+psql -U admin -d data_framework -c "
   SELECT check_name, status, COUNT(*)
   FROM validation.validation_results
   WHERE execution_id = (
@@ -555,11 +540,11 @@ python -m src.cli create pipeline -n MyPipeline -p config.yml
 # Verificar que PostgreSQL está corriendo
 docker ps | grep postgres
 
-# Iniciar PostgreSQL
-docker-compose up -d postgres
+# Para iniciar PostgreSQL, ver README.md
+# O usar: docker logs framework_postgres para debug
 
 # Verificar conexión
-docker exec -it framework_postgres psql -U admin -d pipeline_db -c "SELECT 1;"
+docker exec -it framework_postgres psql -U admin -d data_framework -c "SELECT 1;"
 ```
 
 ### Airflow DAG no aparece en UI

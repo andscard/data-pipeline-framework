@@ -33,7 +33,7 @@ class Config:
     # Usada por: audit_manager.py, postgres_connector.py
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
     POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5433"))
-    POSTGRES_DB = os.getenv("POSTGRES_DB", "pipeline_db")
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "data_framework")
     POSTGRES_USER = os.getenv("POSTGRES_USER", "admin")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "secret_password")
     

@@ -41,9 +41,7 @@ reports/*.html
 reports/*.pdf
 
 # Data (no subir datasets reales)
-data/**/*.csv
-data/**/*.json
-!data/samples/.gitkeep
+data/**
 
 # OS
 .DS_Store

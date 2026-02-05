@@ -240,9 +240,7 @@ class DataTransformer:
     
     def print_report(self) -> None:
         """Imprimir reporte en consola"""
-        print("\n" + "="*60)
         print(f"TRANSFORMATION REPORT - {self.name}")
-        print("="*60)
         
         summary = self.get_summary()
         
@@ -260,7 +258,6 @@ class DataTransformer:
             if result.records_affected > 0:
                 print(f"     Affected: {result.records_affected} records")
         
-        print("\n" + "="*60 + "\n")
     
     def apply_operation(self, df: pd.DataFrame, operation_config: Dict[str, Any]) -> pd.DataFrame:
         """

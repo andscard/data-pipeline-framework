@@ -560,7 +560,6 @@ class HTMLReportGenerator:
                 <td style="text-align: center; color: #dc3545; font-weight: 600;">{data['failed']}</td>
                 <td style="text-align: center; font-weight: 600;">{data['total']}</td>
                 <td style="text-align: center;">{success_rate:.1f}%</td>
-                <td style="text-align: center; font-size: 1.2em;">{status}</td>
             </tr>
             """)
         
@@ -574,7 +573,6 @@ class HTMLReportGenerator:
                     <th style="text-align: center;">Failed</th>
                     <th style="text-align: center;">Total</th>
                     <th style="text-align: center;">Success Rate</th>
-                    <th style="text-align: center;">Status</th>
                 </tr>
             </thead>
             <tbody>
@@ -584,7 +582,7 @@ class HTMLReportGenerator:
         """
     
     def _render_failures_table(self, validation_results: list) -> str:
-        """Renderizar tabla detallada de fallos"""
+        """Renderizar tabla detallada de fallos con explicaciones claras"""
         failures = []
         for result in validation_results:
             if not result['passed'] and result.get('failure_details'):
@@ -595,20 +593,21 @@ class HTMLReportGenerator:
                     })
         
         if not failures:
-            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ All validations passed successfully</div>'
+            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente</div>'
         
         rows = []
+        seen_failures = set()  # Para evitar duplicados
+        
         for item in failures:
             detail = item['detail']
             exp_type = detail.get('expectation_type', 'N/A')
             kwargs = detail.get('kwargs', {})
-            column = kwargs.get('column', 'N/A')
+            column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
             
-            # Extraer pattern
-            pattern = kwargs.get('regex', kwargs.get('value_set', kwargs.get('min_value', 'N/A')))
-            if isinstance(pattern, str) and len(pattern) > 60:
-                pattern = pattern[:57] + '...'
+            # Descripción legible de la validación
+            description = self._get_expectation_description(exp_type, kwargs)
             
+            # Métricas
             unexpected_count = detail.get('unexpected_count', 0) or 0
             unexpected_percent = detail.get('unexpected_percent') or 0.0
             element_count = detail.get('element_count', 0) or 0
@@ -623,42 +622,214 @@ class HTMLReportGenerator:
                 element_count = 0
                 unexpected_percent = 0.0
             
-            # Severity
-            severity = 'critical' if unexpected_percent > 10 else 'high' if unexpected_percent > 5 else 'medium'
-            severity_class = f'severity-{severity}'
+            # Clasificar si es validación table-level o record-level
+            is_table_level = exp_type in [
+                'expect_table_row_count_to_be_between',
+                'expect_table_column_count_to_equal',
+                'expect_table_columns_to_match_ordered_list',
+                'expect_column_mean_to_be_between',
+                'expect_column_stdev_to_be_between'
+            ]
             
-            # Simplificar nombre
-            simple_type = exp_type.replace('expect_column_values_to_', '').replace('expect_column_', '').replace('_', ' ').title()
+            # Para table-level, mostrar con métricas diferentes
+            if is_table_level:
+                # Usar element_count como total de registros
+                if element_count > 0:
+                    affected_display = f"Toda la tabla ({element_count:,} registros)"
+                    impact_display = "100%"
+                    severity = 'critical'
+                    severity_label = 'CRÍTICO'
+                    severity_color = '#dc3545'
+                else:
+                    affected_display = "Toda la tabla"
+                    impact_display = "100%"
+                    severity = 'high'
+                    severity_label = 'ALTO'
+                    severity_color = '#fd7e14'
+            else:
+                # Validaciones a nivel de registro
+                if element_count > 0:
+                    affected_display = f"{unexpected_count:,} / {element_count:,}"
+                    impact_display = f"{unexpected_percent:.1f}%"
+                else:
+                    # Cuando no hay element_count, mostrar observed_value si está disponible
+                    observed_value = detail.get('observed_value')
+                    if observed_value is not None:
+                        if isinstance(observed_value, dict):
+                            # Para quantiles, mostrar valores observados vs esperados
+                            if 'quantiles' in observed_value and 'values' in observed_value:
+                                quantiles = observed_value.get('quantiles', [])
+                                values = observed_value.get('values', [])
+                                # Obtener rangos esperados
+                                value_ranges = kwargs.get('quantile_ranges', {}).get('value_ranges', [])
+                                details_str = []
+                                for i, (q, v) in enumerate(zip(quantiles, values)):
+                                    expected = value_ranges[i] if i < len(value_ranges) else [None, None]
+                                    q_pct = int(q * 100)
+                                    details_str.append(f"P{q_pct}: {v:.2f} (esperado: {expected[0]}-{expected[1]})")
+                                affected_display = "; ".join(details_str)
+                            else:
+                                affected_display = f"Valor observado: {observed_value}"
+                        elif isinstance(observed_value, (int, float)):
+                            affected_display = f"Valor observado: {observed_value:,}"
+                        else:
+                            affected_display = f"Condición no cumplida"
+                    else:
+                        affected_display = "N/A"
+                    impact_display = "N/A"
+                
+                # Severity basada en porcentaje o tipo de validación
+                if unexpected_percent > 10:
+                    severity = 'critical'
+                    severity_label = 'CRÍTICO'
+                    severity_color = '#dc3545'
+                elif unexpected_percent > 5:
+                    severity = 'high'
+                    severity_label = 'ALTO'
+                    severity_color = '#fd7e14'
+                elif element_count == 0:  # Sin métricas específicas
+                    severity = 'medium'
+                    severity_label = 'MEDIO'
+                    severity_color = '#ffc107'
+                else:
+                    severity = 'medium'
+                    severity_label = 'MEDIO'
+                    severity_color = '#ffc107'
+            
+            # Formatear columna
+            if isinstance(column, list):
+                column_display = ', '.join(str(c) for c in column)
+            else:
+                column_display = str(column)
+            
+            # Evitar duplicados - incluir kwargs relevantes para distinguir expectativas diferentes
+            # Por ejemplo: misma columna con diferentes regex o diferentes value_set
+            kwargs_key = f"{kwargs.get('regex', '')}{kwargs.get('value_set', '')}{kwargs.get('row_condition', '')}{kwargs.get('mostly', '')}"
+            failure_key = f"{item['suite']}:{column_display}:{exp_type}:{kwargs_key}"
+            if failure_key in seen_failures:
+                continue
+            seen_failures.add(failure_key)
             
             rows.append(f"""
-            <tr class="{severity_class}">
-                <td><span class="severity-indicator {severity}"></span>{item['suite']}</td>
-                <td><code>{simple_type}</code></td>
-                <td><strong>{column}</strong></td>
-                <td><code>{pattern}</code></td>
-                <td style="text-align: right;">{unexpected_count:,} / {element_count:,}</td>
-                <td style="text-align: right; font-weight: 600;">{unexpected_percent:.2f}%</td>
+            <tr style="border-left: 4px solid {severity_color};">
+                <td>
+                    <strong style="color: #0f3460;">{item['suite']}</strong>
+                </td>
+                <td>
+                    <span style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">
+                        {column_display}
+                    </span>
+                </td>
+                <td style="font-size: 0.95em;">
+                    {description}
+                </td>
+                <td style="text-align: center;">
+                    <span style="background: {severity_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
+                        {severity_label}
+                    </span>
+                </td>
+                <td style="text-align: right; font-family: monospace;">
+                    {affected_display}
+                </td>
+                <td style="text-align: right;">
+                    <strong style="color: #dc3545; font-size: 1.1em;">{impact_display}</strong>
+                </td>
             </tr>
             """)
         
+        if not rows:
+            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente (fallos sin impacto filtrados)</div>'
+        
         return f"""
-        <h3 style="margin-top: 40px; color: #dc3545; font-size: 1.2em;">Validation Failures Detail</h3>
-        <table class="failures-table">
-            <thead>
-                <tr>
-                    <th>Suite</th>
-                    <th>Expectation</th>
-                    <th>Column</th>
-                    <th>Pattern/Rule</th>
-                    <th style="text-align: right;">Affected Records</th>
-                    <th style="text-align: right;">%</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
-        </table>
+        <div style="margin-top: 30px;">
+            <h3 style="color: #dc3545; font-size: 1.3em; margin-bottom: 20px;">
+                ⚠️ Detalle de Validaciones Fallidas ({len(rows)} problemas detectados)
+            </h3>
+            <table class="failures-table" style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <thead>
+                    <tr style="background: #1a1a2e; color: white;">
+                        <th style="padding: 12px; text-align: left; width: 18%;">Suite</th>
+                        <th style="padding: 12px; text-align: left; width: 12%;">Columna(s)</th>
+                        <th style="padding: 12px; text-align: left; width: 40%;">¿Qué falló?</th>
+                        <th style="padding: 12px; text-align: center; width: 10%;">Severidad</th>
+                        <th style="padding: 12px; text-align: right; width: 12%;">Registros Afectados</th>
+                        <th style="padding: 12px; text-align: right; width: 8%;">Impacto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(rows)}
+                </tbody>
+            </table>
+        </div>
         """
+    
+    def _get_expectation_description(self, exp_type: str, kwargs: dict) -> str:
+        """Generar descripción legible de una expectativa"""
+        column = kwargs.get('column', 'N/A')
+        
+        # Mapeo de expectativas a descripciones claras
+        descriptions = {
+            'expect_column_values_to_not_match_regex': 
+                f"Se encontraron valores que coinciden con el patrón prohibido: <code>{kwargs.get('regex', 'N/A')[:80]}</code>",
+            
+            'expect_column_values_to_match_regex': 
+                f"Valores no cumplen el formato esperado: <code>{kwargs.get('regex', 'N/A')[:80]}</code>",
+            
+            'expect_column_values_to_be_in_set': 
+                f"Valores fuera del conjunto permitido: {kwargs.get('value_set', [])}",
+            
+            'expect_column_values_to_not_be_in_set': 
+                f"Se encontraron valores prohibidos del conjunto: {kwargs.get('value_set', [])}",
+            
+            'expect_column_values_to_be_between': 
+                f"Valores fuera del rango [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
+            
+            'expect_column_mean_to_be_between': 
+                f"Promedio de columna fuera del rango esperado [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
+            
+            'expect_column_quantile_values_to_be_between': 
+                f"Percentiles fuera de rangos esperados (outliers detectados)",
+            
+            'expect_compound_columns_to_be_unique': 
+                f"Se encontraron registros duplicados por la combinación de columnas: {kwargs.get('column_list', [])}",
+            
+            'expect_column_values_to_not_be_null': 
+                f"Se encontraron valores nulos en columna que no debe tenerlos",
+            
+            'expect_column_values_to_be_unique': 
+                f"Se encontraron valores duplicados (debe ser única)",
+            
+            'expect_column_proportion_of_unique_values_to_be_between': 
+                f"Proporción de valores únicos fuera de rango: [{kwargs.get('min_value', 0)*100:.0f}%, {kwargs.get('max_value', 1)*100:.0f}%]",
+            
+            'expect_table_row_count_to_be_between': 
+                f"Número de filas fuera de rango [{self._format_number(kwargs.get('min_value'))}, {self._format_number(kwargs.get('max_value'))}]",
+            
+            'expect_table_column_count_to_equal': 
+                f"Número de columnas diferente al esperado ({kwargs.get('value', 'N/A')})",
+            
+            'expect_table_columns_to_match_ordered_list': 
+                f"Las columnas no coinciden con la estructura esperada"
+        }
+        
+        # Buscar descripción
+        description = descriptions.get(exp_type)
+        if description:
+            return description
+        
+        # Fallback genérico
+        simple_name = exp_type.replace('expect_column_values_to_', '').replace('expect_column_', '').replace('expect_table_', '').replace('_', ' ').title()
+        return f"Validación '{simple_name}' falló"
+    
+    def _format_number(self, value) -> str:
+        """Formatear número con separadores de miles, o retornar string si no es número"""
+        if value is None or value == 'N/A':
+            return 'N/A'
+        try:
+            return f"{int(value):,}"
+        except (ValueError, TypeError):
+            return str(value)
+        return f"Validación '{simple_name}' falló"
     
     def _render_stages(self, stages: dict) -> str:
         """Renderizar tabla de stages"""

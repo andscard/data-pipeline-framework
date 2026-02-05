@@ -107,7 +107,10 @@ class PipelineExecutor:
         self.pipeline_id = self.audit.register_pipeline(
             name=pipeline_name,
             description=pipeline_desc,
-            config=self.config
+            config=self.config,
+            version=pipeline_config.get('version', '1.0.0'),
+            owner=pipeline_config.get('owner'),
+            tags=pipeline_config.get('tags', [])
         )
         
         return self.pipeline_id
@@ -221,12 +224,21 @@ class PipelineExecutor:
                 status="completed",
                 records_processed=result.records_processed,
                 records_failed=result.records_failed,
+                stages_summary=[{
+                    'stage_name': stage.stage_name,
+                    'status': stage.status.value,
+                    'duration_seconds': stage.duration_seconds,
+                    'records_input': stage.records_input,
+                    'records_output': stage.records_output,
+                    'records_failed': stage.records_failed,
+                    'quality_score': stage.quality_score,
+                    'validations_passed': stage.validations_passed,
+                    'validations_failed': stage.validations_failed
+                } for stage in self.monitoring.metrics.stages],
+                quality_score=monitoring_summary.get('overall_quality_score'),
+                report_path=str(result.report_path) if result.report_path else None,
                 metrics={
-                    'duration_seconds': result.duration_seconds,
-                    'stages_completed': len(self.monitoring.metrics.stages),
-                    'health_status': self.monitoring.get_health_status().value,
-                    'quality_score': monitoring_summary.get('overall_quality_score'),
-                    'report_path': str(result.report_path) if result.report_path else None
+                    'health_status': self.monitoring.get_health_status().value
                 }
             )
             
@@ -320,22 +332,25 @@ class PipelineExecutor:
             total_validations = 0
             passed_validations = 0
             failed_validations = 0
+            total_records_validated = 0
             
             # Validación de esquema con Pandera
             schema_validations = validation_config.get('schema_validation', [])
             for schema_config in schema_validations:
-                passed, failed = self._run_pandera_validation(schema_config, result)
+                passed, failed, records = self._run_pandera_validation(schema_config, result)
                 total_validations += passed + failed
                 passed_validations += passed
                 failed_validations += failed
+                total_records_validated += records
             
             # Validación de calidad con Great Expectations
             expectations = validation_config.get('expectations', [])
             for expectation_config in expectations:
-                passed, failed = self._run_ge_validation(expectation_config, result)
+                passed, failed, records = self._run_ge_validation(expectation_config, result)
                 total_validations += passed + failed
                 passed_validations += passed
                 failed_validations += failed
+                total_records_validated += records
             
             # Calcular score de calidad
             if total_validations > 0:
@@ -346,24 +361,29 @@ class PipelineExecutor:
                     failed=failed_validations
                 )
                 
+                # Establecer conteo de registros validados
+                stage.set_records(input=total_records_validated, output=total_records_validated, failed=0)
+                
                 logger.info(f"\n[VALIDATION] Quality Score: {quality_score:.1f}%")
                 logger.info(f"  Passed: {passed_validations}/{total_validations}")
                 logger.info(f"  Failed: {failed_validations}/{total_validations}")
+                logger.info(f"  Records validated: {total_records_validated:,}")
     
-    def _run_pandera_validation(self, validation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int]:
+    def _run_pandera_validation(self, validation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int, int]:
         """Ejecutar validación con Pandera.
         
         Returns:
-            tuple: (validaciones_pasadas, validaciones_fallidas)
+            tuple: (validaciones_pasadas, validaciones_fallidas, registros_validados)
         """
         validation_name = validation_config.get('name', 'unnamed')
         input_dataset = validation_config.get('input_dataset')
         output_dataset = validation_config.get('output_dataset')
         
         if input_dataset not in self.datasets:
-            return (0, 0)
+            return (0, 0, 0)
         
         df = self.datasets[input_dataset]
+        record_count = len(df)
         
         try:
             validator = PanderaValidator(validation_config.get('schema', {}))
@@ -383,24 +403,27 @@ class PipelineExecutor:
                 rule_type="pandera_schema",
                 passed=passed,
                 failed_count=failed_count,
-                failure_details=validation_result.get('failures', [])
+                failure_details=validation_result.get('failures', []),
+                dataset_name=dataset_name,
+                total_records=record_count,
+                severity="error" if not passed else "info"
             )
             
             # Retornar métricas
             if passed:
-                return (1, 0)
+                return (1, 0, record_count)
             else:
-                return (0, 1)
+                return (0, 1, record_count)
             
         except Exception as e:
             result.errors.append(f"Pandera validation error in {validation_name}: {e}")
-            return (0, 1)
+            return (0, 1, record_count)
     
-    def _run_ge_validation(self, expectation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int]:
+    def _run_ge_validation(self, expectation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int, int]:
         """Ejecutar validación con Great Expectations.
         
         Returns:
-            tuple: (validaciones_pasadas, validaciones_fallidas)
+            tuple: (validaciones_pasadas, validaciones_fallidas, registros_validados)
         """
         dataset_name = expectation_config.get('dataset', 'unknown')
         suite_name = expectation_config.get('suite_name', 'unnamed_suite')
@@ -408,9 +431,10 @@ class PipelineExecutor:
         
         if dataset_name not in self.datasets:
             logger.warning(f"Dataset '{dataset_name}' no encontrado para validación GE")
-            return (0, 0)
+            return (0, 0, 0)
         
         df = self.datasets[dataset_name]
+        record_count = len(df)
         
         try:
             # Crear validador GE
@@ -427,18 +451,42 @@ class PipelineExecutor:
             failed_count = validation_result.get('failed_expectations', 0)
             success = validation_result.get('success', False)
             
-            # Registrar en auditoría
-            self.audit.log_validation_result(
-                execution_id=self.execution_id,
-                rule_name=suite_name,
-                rule_type="great_expectations",
-                passed=success,
-                failed_count=failed_count,
-                failure_details=validation_result.get('failed_details', [])
-            )
+            # Registrar cada expectativa individualmente en auditoría
+            failed_details = validation_result.get('failed_details', [])
+            
+            # Primero, registrar las expectativas fallidas
+            for failed_detail in failed_details:
+                self.audit.log_validation_result(
+                    execution_id=self.execution_id,
+                    rule_name=suite_name,
+                    rule_type="great_expectations",
+                    passed=False,
+                    failed_count=1,
+                    failure_details=[failed_detail],
+                    dataset_name=dataset_name,
+                    suite_name=suite_name,
+                    total_records=record_count,
+                    severity="critical" if 'security' in suite_name.lower() else "error",
+                    expectation_type=failed_detail.get('expectation_type')
+                )
+            
+            # Luego, registrar las expectativas que pasaron (sin detalles)
+            for _ in range(passed_count):
+                self.audit.log_validation_result(
+                    execution_id=self.execution_id,
+                    rule_name=suite_name,
+                    rule_type="great_expectations",
+                    passed=True,
+                    failed_count=0,
+                    failure_details=[],
+                    dataset_name=dataset_name,
+                    suite_name=suite_name,
+                    total_records=record_count,
+                    severity="info"
+                )
             
             # Log de seguridad si es suite de detección
-            if 'security' in suite_name.lower():
+            if 'security' in suite_name.lower() or 'seguridad' in suite_name.lower():
                 if failed_count > 0:
                     logger.warning(f"⚠️  VULNERABILITIES DETECTED: {failed_count} security issues found")
                     for detail in validation_result.get('failed_details', [])[:5]:  # Primeras 5
@@ -446,14 +494,14 @@ class PipelineExecutor:
                 else:
                     logger.info(f"✓ Security validation passed: No vulnerabilities detected")
             
-            return (passed_count, failed_count)
+            return (passed_count, failed_count, record_count)
             
         except Exception as e:
             logger.error(f"GE validation error in {suite_name}: {e}")
             result.errors.append(f"GE validation error in {suite_name}: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return (0, len(expectations_list))
+            return (0, len(expectations_list), record_count)
     
     def _execute_transformation(self, result: ExecutionResult):
         """Ejecutar etapa de transformation."""

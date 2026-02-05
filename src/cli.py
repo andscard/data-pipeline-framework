@@ -96,9 +96,7 @@ def infect(config_path: str, dry_run: bool):
         # Mostrar reporte
         report = infector.generate_report()
         click.echo()
-        click.echo("=" * 60)
         click.echo("INFECTION REPORT")
-        click.echo("=" * 60)
         click.echo(f"Original rows:    {report['original_rows']:,}")
         click.echo(f"Infected rows:    {report['infected_rows']:,}")
         click.echo(f"Attacks applied:  {report['attacks_successful']}/{report['attacks_applied']}")
@@ -117,7 +115,6 @@ def infect(config_path: str, dry_run: bool):
                 click.echo(f"    Error: {detail.get('error', 'Unknown')}")
         
         click.echo()
-        click.echo("=" * 60)
         click.echo(f"Infected data saved: {infector.config.output_path}")
         
         report_path = Path(infector.config.output_path).parent / 'infection_report.json'

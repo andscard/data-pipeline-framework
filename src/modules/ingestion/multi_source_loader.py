@@ -180,7 +180,7 @@ class MultiSourceLoader:
         if not connector.connect():
             raise ConnectionError("No se pudo conectar a PostgreSQL")
         
-        return connector.execute_query(query)
+        return connector.extract(query=query)
     
     def write_to_destination(
         self, 

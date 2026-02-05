@@ -238,15 +238,22 @@ class GreatExpectationsValidator:
         failed_details = []
         for result in results:
             if not result.success:
-                failed_details.append({
-                    'expectation_type': result.expectation_config.expectation_type,
-                    'kwargs': result.expectation_config.kwargs,
-                    'observed_value': result.result.get('observed_value'),
-                    'element_count': result.result.get('element_count'),
-                    'missing_count': result.result.get('missing_count'),
-                    'unexpected_count': result.result.get('unexpected_count'),
-                    'unexpected_percent': result.result.get('unexpected_percent')
-                })
+                result_dict = result.result if hasattr(result.result, '__dict__') else result.result
+                
+                # SOLO AGREGAR SI TIENE INFORMACIÓN ÚTIL
+                # Si result_dict está vacío {}, es un falso positivo de GE
+                if result_dict and len(result_dict) > 0:
+                    failed_details.append({
+                        'expectation_type': result.expectation_config.expectation_type,
+                        'kwargs': result.expectation_config.kwargs,
+                        'observed_value': result_dict.get('observed_value'),
+                        'element_count': result_dict.get('element_count'),
+                        'missing_count': result_dict.get('missing_count'),
+                        'unexpected_count': result_dict.get('unexpected_count'),
+                        'unexpected_percent': result_dict.get('unexpected_percent'),
+                        'unexpected_index_list': result_dict.get('unexpected_index_list', [])[:10] if result_dict.get('unexpected_index_list') else [],
+                        'partial_unexpected_list': result_dict.get('partial_unexpected_list', [])[:5] if result_dict.get('partial_unexpected_list') else []
+                    })
         
         success_rate = (passed_expectations / total_expectations * 100) if total_expectations > 0 else 0
         

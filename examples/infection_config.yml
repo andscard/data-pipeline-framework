@@ -48,63 +48,63 @@ attacks:
   # -------------------------------------------------------------------------
   - type: schema_manipulation
     columns: ['customer_id']
-    rate: 0.06
+    rate: 0.05  # 5% de filas
     
   # -------------------------------------------------------------------------
   # OWASP #3: INJECTION ATTACKS
-  # SQL, NoSQL, Command Injection payloads
+  # SQL, NoSQL, Command, XSS injection
   # -------------------------------------------------------------------------
   - type: injection
-    columns: ['name', 'address']
-    rate: 0.15
+    columns: ['name', 'email', 'address']
+    rate: 0.08  # 8% de filas
     
   # -------------------------------------------------------------------------
   # OWASP #4: MISSING DATA
   # Valores nulos estratégicos
   # -------------------------------------------------------------------------
   - type: missing_data
-    columns: ['email', 'phone']
-    rate: 0.08
+    columns: ['phone', 'address']
+    rate: 0.05  # 5% de filas
     
   # -------------------------------------------------------------------------
-  # OWASP #5: OUTLIERS EXTREMOS
-  # Valores que sesgan estadísticas
+  # OWASP #5: OUTLIERS
+  # Valores extremos que sesgan estadísticas
   # -------------------------------------------------------------------------
   - type: outliers
     columns: ['lifetime_value']
-    rate: 0.09
+    rate: 0.07  # 7% de filas
     
   # -------------------------------------------------------------------------
   # OWASP #6: DUPLICATES
-  # Registros duplicados que inflan conteos
+  # Registros duplicados
   # -------------------------------------------------------------------------
   - type: duplicates
-    columns: []  # Se duplican filas completas
-    rate: 0.03
+    columns: []  # Filas completas
+    rate: 0.03  # 3% de filas duplicadas
     
   # -------------------------------------------------------------------------
   # OWASP #7: DATA LEAKAGE
-  # Exposición de información sensible
+  # Exposición de información sensible (PII, tokens, keys)
   # -------------------------------------------------------------------------
   - type: data_leakage
-    columns: ['address']
-    rate: 0.02
+    columns: ['name', 'address']
+    rate: 0.05  # 5% de filas
     
   # -------------------------------------------------------------------------
-  # OWASP #8: INCONSISTENCIAS
-  # Formatos/valores inconsistentes
+  # OWASP #8: INCONSISTENCY
+  # Inconsistencias en formato y valores
   # -------------------------------------------------------------------------
   - type: inconsistency
-    columns: ['email', 'registration_date']
-    rate: 0.04
+    columns: ['phone', 'email']
+    rate: 0.04  # 4% de filas
     
   # -------------------------------------------------------------------------
   # OWASP #9: FORMAT CORRUPTION
-  # Corrupción de formato
+  # Corrupción de encoding y formato
   # -------------------------------------------------------------------------
   - type: format_corruption
-    columns: ['name']
-    rate: 0.03
+    columns: ['name', 'address']
+    rate: 0.05  # 5% de filas
     
   # -------------------------------------------------------------------------
   # OWASP #10: TIMING ATTACKS
@@ -112,27 +112,18 @@ attacks:
   # -------------------------------------------------------------------------
   - type: timing
     columns: ['registration_date', 'last_login']
-    rate: 0.02
+    rate: 0.1  # 10% de filas
 
 # ============================================================================
-# CONFIGURACIONES ESPECIALES
+# METADATA
 # ============================================================================
-
-# Usar columnas aleatorias (en lugar de especificar)
-# - type: data_poisoning
-#   columns: random
-#   num_random_columns: 2
-#   rate: 0.10
-
-# Múltiples ataques al mismo campo
-# - type: missing_data
-#   columns: ['email']
-#   rate: 0.05
-# - type: injection
-#   columns: ['email']
-#   rate: 0.03
-
-# Tasa variable por ataque
-# - type: outliers
-#   columns: ['amount']
-#   rate: 0.15  # 15% de outliers extremos
+metadata:
+  description: "Configuración de infección para testing de seguridad"
+  version: "2.0"
+  created_by: "Data Pipeline Framework"
+  owasp_categories:
+    - "A03:2021 - Injection"
+    - "A04:2021 - Insecure Design"
+    - "A05:2021 - Security Misconfiguration"
+    - "A07:2021 - Identification and Authentication Failures"
+    - "A08:2021 - Software and Data Integrity Failures"

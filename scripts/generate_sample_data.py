@@ -1,4 +1,4 @@
-# scripts/generate_samples.py
+# scripts/generate_sample_data.py
 """
 =============================================================================
 GENERADOR DE DATOS DE PRUEBA PARA DESARROLLO Y TESTING
@@ -16,42 +16,27 @@ GENERADOR DE DATOS DE PRUEBA PARA DESARROLLO Y TESTING
 ¿QUÉ GENERA?
 
   A) ARCHIVOS DE DATOS (data/samples/):
-     - customers.csv/xlsx/parquet/txt: 1000 clientes ficticios
-     - transactions.csv: 5000 transacciones ficticias
-     - data_with_anomalies.csv: 500 registros CON ERRORES INTENCIONALES
-       * Este archivo tiene nulls, outliers y duplicados A PROPÓSITO
-       * Sirve para validar que tu pipeline detecte datos malos
+     - customers.csv/parquet/txt: Clientes ficticios en múltiples formatos
+     - transactions.csv: Transacciones ficticias
 
   B) TABLAS EN POSTGRESQL:
      - sample_data.customers: Tabla de ejemplo para ingestar
-     - pipeline.pipelines: Pipeline de ejemplo ya configurado
-     - pipeline.executions: Historial de ejecución SIMULADA
-     - pipeline.validation_results: Resultados de validación SIMULADOS
-     - security.attack_scenarios: Escenarios de ataque de ejemplo
-     - monitoring.metrics: Métricas de ejemplo para dashboard
+
+NOTA: Las tablas de auditoría (pipeline.executions, pipeline.validation_results, etc.)
+      se crean automáticamente al ejecutar pipelines. No se generan datos de ejemplo.
 
 ¿TIENE VALOR PARA PRODUCCIÓN?
-  NO. Estos datos son 100% ficticios.
+  NO. Los datos generados son 100% ficticios para testing.
   
-  VALOR REAL:
-  - Los DATOS de clientes/transacciones son solo para testing
-  - Las TABLAS de auditoría (pipelines, executions, etc.) son las que
-    guardarán información REAL cuando ejecutes pipelines con datos reales
-
-¿PUEDO HACER REPORTES CON ESTO?
-  SÍ, pero solo para DEMOSTRAR el framework.
-  - Puedes consultar pipeline.executions para ver historial
-  - Puedes consultar monitoring.metrics para gráficas
-  - Puedes consultar security.simulation_results para reportes de seguridad
-  
-  Cuando ejecutes el pipeline con datos REALES, estas mismas tablas
-  guardarán información real y útil para reportes de producción.
+  Las tablas de auditoría (pipeline.*) SÍ guardarán datos reales cuando
+  ejecutes pipelines con fuentes de datos reales.
 
 IDEMPOTENTE: Puedes ejecutar este script múltiples veces sin problemas.
 =============================================================================
 """
 
 import sys
+import argparse
 from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -62,20 +47,20 @@ from src.modules.ingestion.connectors.postgres_connector import create_postgres_
 import pandas as pd
 import numpy as np
 
-def generate_csv_samples():
+def generate_csv_samples(num_customers=1000, num_transactions=5000):
     """
     PASO 1: Generar archivos de datos sintéticos
     
     Crea archivos de ejemplo en data/samples/ para que puedas:
     - Probar el pipeline sin datos reales
-    - Validar que los conectores (CSV, Excel, Parquet, TXT) funcionan
-    - Testear validaciones de calidad con datos que tienen errores
+    - Validar que los conectores (CSV, Parquet, TXT) funcionan
+    - Testing de integración con datos limpios
     
-    IMPORTANTE: El archivo 'data_with_anomalies.csv' tiene errores
-    A PROPÓSITO (nulls, outliers, duplicados) para que puedas verificar
-    que tu pipeline detecta datos malos correctamente.
+    Args:
+        num_customers: Número de clientes a generar (default: 1000)
+        num_transactions: Número de transacciones a generar (default: 5000)
     """
-    print("\n[*] Generando archivos de datos sintéticos...")
+    print(f"\n[*] Generando archivos de datos sintéticos ({num_customers:,} clientes, {num_transactions:,} transacciones)...")
     
     try:
         samples_dir = config.DATA_DIR / "samples"
@@ -83,14 +68,14 @@ def generate_csv_samples():
         
         generator = create_synthetic_generator(seed=42)
         
-        # 1. Customers - múltiples formatos para demostrar capacidades
-        print("  - Generando customers en múltiples formatos...")
-        customers = generator.generate_customer_data(num_customers=1000)
+        # 1. Customers - usar método completo del generador
+        print(f"  - Generando customers (CSV, Parquet, TXT)... [{num_customers:,} registros]")
+        customers = generator.generate_customer_data(num_customers=num_customers)
         
         formats_saved = generator.save_to_formats(
             df=customers,
             base_path=samples_dir / "customers",
-            formats=['csv', 'excel', 'parquet']
+            formats=['csv', 'parquet', 'txt']
         )
         
         for fmt, success in formats_saved.items():
@@ -98,13 +83,13 @@ def generate_csv_samples():
             print(f"    {status} customers.{fmt}")
         
         # 2. Transactions - transacciones para ejemplos de agregación
-        print("  - Generando transactions.csv...")
-        transactions = generator.generate_transaction_data(num_transactions=5000)
+        print(f"  - Generando transactions.csv... [{num_transactions:,} registros]")
+        transactions = generator.generate_transaction_data(num_transactions=num_transactions)
         transactions.to_csv(samples_dir / "transactions.csv", index=False)
-        print(f"    ✓ OK: {len(transactions)} registros")
+        print(f"    ✓ OK: {len(transactions):,} registros")
         
         print(f"\n[✓] Archivos generados en: {samples_dir}")
-        print(f"    Total: 4 archivos (customers en 3 formatos + transactions)")
+        print(f"    Total: 6 archivos (4 formatos de customers + 2 CSVs adicionales)")
         
         return customers
         
@@ -186,8 +171,12 @@ def populate_postgres_tables(customers_df=None):
         )
         print(f"    ✓ Tabla creada con {len(customers_df)} registros")
         
+        # Nota: Las tablas de auditoría (pipeline.*, security.*, monitoring.*)
+        # se poblarán automáticamente cuando ejecutes pipelines REALES.
+        # No es necesario insertar datos de ejemplo aquí.
+        
         connector.close()
-        print("\n[✓] Tabla sample_data.customers poblada correctamente")
+        print("\n[✓] Tablas de PostgreSQL pobladas correctamente")
         return True
         
     except Exception as e:
@@ -199,29 +188,59 @@ def populate_postgres_tables(customers_df=None):
 
 def main():
     """Ejecutar generación de datos de ejemplo"""
-    print("="*70)
+    # Parsear argumentos CLI
+    parser = argparse.ArgumentParser(
+        description='Generar datos sintéticos para testing y desarrollo',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Ejemplos de uso:
+  %(prog)s                              # Generar 1,000 clientes y 5,000 transacciones (rápido)
+  %(prog)s -c 100000 -t 500000          # Generar 100K clientes y 500K transacciones
+  %(prog)s -c 1000000 -t 5000000        # Generar 1M clientes y 5M transacciones (lento)
+  %(prog)s --skip-db                    # Solo archivos, sin poblar PostgreSQL
+  %(prog)s --only-db                    # Solo PostgreSQL, sin archivos CSV
+        ''')
+    
+    parser.add_argument('-c', '--customers', type=int, default=1000,
+                        help='Número de clientes a generar (default: 1000)')
+    parser.add_argument('-t', '--transactions', type=int, default=5000,
+                        help='Número de transacciones a generar (default: 5000)')
+    parser.add_argument('--skip-db', action='store_true',
+                        help='No poblar tablas de PostgreSQL')
+    parser.add_argument('--only-db', action='store_true',
+                        help='Solo poblar PostgreSQL, no generar archivos')
+    
+    args = parser.parse_args()
+    
     print("GENERACIÓN DE DATOS DE EJEMPLO PARA DESARROLLO Y TESTING")
-    print("="*70)
-    print("\nEste script genera datos dummy en múltiples formatos:")
-    print("  • CSV, Excel, Parquet")
-    print("  • Tabla PostgreSQL (sample_data.customers)")
+    print(f"\n📊 Configuración:")
+    print(f"  • Clientes: {args.customers:,}")
+    print(f"  • Transacciones: {args.transactions:,}")
+    print(f"  • Archivos CSV/Excel/Parquet: {'❌ Omitido' if args.only_db else '✓'}")
+    print(f"  • PostgreSQL: {'❌ Omitido' if args.skip_db else '✓'}")
     print()
     
     success_files = False
     success_db = False
     
     try:
-        # Generar archivos (CSV, Excel, Parquet)
-        customers_df = generate_csv_samples()
-        if customers_df is not None:
-            success_files = True
+        customers_df = None
+        
+        # Generar archivos (CSV, Excel, Parquet, TXT)
+        if not args.only_db:
+            customers_df = generate_csv_samples(
+                num_customers=args.customers,
+                num_transactions=args.transactions
+            )
+            if customers_df is not None:
+                success_files = True
         
         # Poblar PostgreSQL
-        if populate_postgres_tables(customers_df):
-            success_db = True
+        if not args.skip_db:
+            if populate_postgres_tables(customers_df):
+                success_db = True
         
         # Resumen final
-        print("\n" + "="*70)
         if success_files and success_db:
             print("[✓] DATOS DE EJEMPLO GENERADOS EXITOSAMENTE")
         elif success_files:
@@ -230,24 +249,22 @@ def main():
             print("[⚠] POSTGRESQL POBLADO (Archivos fallaron)")
         else:
             print("[✗] ERROR: No se pudieron generar los datos")
-        print("="*70)
         
         if success_files:
-            print("\n📁 ARCHIVOS GENERADOS (data/samples/):")
-            print("  ✓ customers.csv - 1000 clientes")
-            print("  ✓ customers.xlsx - 1000 clientes (Excel)")
-            print("  ✓ customers.parquet - 1000 clientes (Parquet)")
-            print("  ✓ transactions.csv - 5000 transacciones")
-            print("\n  Demostración de capacidades:")
-            print("  → Lectura: Pipeline lee CSV, Excel, Parquet, PostgreSQL")
-            print("  → Escritura: Pipeline escribe CSV, Excel, Parquet, PostgreSQL")
+            print("\n📁 ARCHIVOS DE PRUEBA GENERADOS (data/samples/):")
+            print("  ✓ customers.csv/parquet/txt - Datos ficticios para ingestar")
+            print("  ✓ transactions.csv - Transacciones para ejemplos")
         
         if success_db:
-            print("\n🗄️  TABLA POBLADA EN POSTGRESQL:")
-            print("  ✓ sample_data.customers - 1000 clientes")
+            print("\n🗄️  TABLAS POBLADAS EN POSTGRESQL:")
+            print("\n  DATOS DE PRUEBA:")
+            print(f"    ✓ sample_data.customers - {args.customers:,} clientes sintéticos")
+            print("\n  💡 Las tablas de auditoría se poblarán automáticamente al ejecutar pipelines")
+            print("     (pipeline.executions, validation_results, metrics, etc.)")
         
         print("\n📚 Siguiente paso:")
-        print("  Ejecutar pipeline: python -m src.cli run pipeline -c examples/complete_pipeline.yml")
+        print("  1. Ejecutar setup completo: python scripts/setup_environment.py")
+        print("  2. O ejecutar pipeline directamente con estos datos")
         print()
         
         if not (success_files and success_db):

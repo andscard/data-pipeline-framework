@@ -4,99 +4,204 @@ Framework modular para pipelines de datos con **validación de calidad**, **dete
 
 ---
 
-## 📖 Guía Completa Paso a Paso
+## � Instalación Rápida (Automatizada)
 
-### Paso 1: Instalación Inicial
+**Setup completo en un solo comando:**
+
+```powershell
+# Ejecutar script de setup automático (Windows PowerShell)
+.\setup.ps1
+```
+
+Este script automáticamente:
+- ✅ Verifica dependencias (Python, Docker)
+- ✅ Instala paquetes de Python
+- ✅ Inicia PostgreSQL en Docker
+- ✅ Crea la base de datos `data_framework`
+- ✅ Inicializa todas las tablas
+- ✅ Genera datos de ejemplo (opcional)
+
+**Duración:** ~2-3 minutos
+
+---
+
+## 🗄️ Gestión de Base de Datos
+
+Después de la instalación, usa `db_utils.py` para gestionar la base de datos:
+
+### Comandos Esenciales
 
 ```bash
-# 1.1 Instalar dependencias de Python
-pip install -r requirements.txt
+# Ver estado de todas las tablas
+python scripts/db_utils.py status
 
-# 1.2 Iniciar PostgreSQL con Docker
+# Ver estadísticas del framework
+python scripts/db_utils.py stats
+
+# Ver últimas 10 ejecuciones
+python scripts/db_utils.py executions
+
+# Ver pipelines registrados
+python scripts/db_utils.py pipelines
+
+# Limpiar datos de ejemplo (mantiene auditoría)
+python scripts/db_utils.py clean-samples
+
+# Ver todas las opciones
+python scripts/db_utils.py --help
+```
+
+**📚 Documentación completa:** [docs/DATABASE.md](docs/DATABASE.md) (gestión avanzada, queries SQL, schema)
+
+---
+
+## 📖 Instalación Manual (Paso a Paso)
+
+Si prefieres instalación manual o estás en Linux/Mac:
+
+### Paso 1: Verificar Dependencias
+
+```bash
+# Verificar Python 3.10+
+python --version
+
+# Verificar Docker
+docker --version
+docker ps  # Debe estar corriendo
+```
+
+### Paso 2: Instalar Dependencias Python
+
+```bash
+pip install -r requirements.txt
+```
+
+### Paso 3: Iniciar Base de Datos
+
+```bash
+# Iniciar PostgreSQL con Docker
 docker-compose up -d postgres
 
-# 1.3 Esperar a que PostgreSQL esté listo (5-10 segundos)
+# Esperar 10 segundos a que esté listo
+# Windows:
 timeout /t 10
+# Linux/Mac:
+sleep 10
 
-# 1.4 Inicializar base de datos
-docker exec -i framework_postgres psql -U admin -d pipeline_db < scripts/init_db.sql
+# Inicializar tablas automáticamente
+docker exec -i framework_postgres psql -U admin -d data_framework < scripts/init_db.sql
 ```
 
 **Verificar instalación:**
 ```bash
-# Verificar que PostgreSQL está corriendo
-docker ps | findstr postgres
+# Ver estado de la base de datos
+python scripts/db_utils.py status
 
-# Verificar tablas creadas
-docker exec -i framework_postgres psql -U admin -d pipeline_db -c "\dt pipeline.*"
+# Debe mostrar: 6 tablas en schemas pipeline y sample_data (vacías)
 ```
 
----
-
-### Paso 2: Generar Datos Sintéticos
+### Paso 4: Generar Datos de Ejemplo
 
 ```bash
-# 2.1 Generar datos limpios de ejemplo (1000 registros)
-python scripts/generate_sample_data.py
+# Generar datos sintéticos
+python scripts/generate_sample_data.py -c 10000 -t 50000
+
+# -c 10000  : 10,000 clientes
+# -t 50000  : 50,000 transacciones
 ```
 
 **Salida esperada:**
 ```
-data/samples/customers.csv       (1000 registros limpios)
-data/samples/transactions.csv    (5000 transacciones)
+✓ data/samples/customers.csv          (10,000 registros)
+✓ data/samples/transactions.csv       (50,000 transacciones)
+✓ sample_data.customers en PostgreSQL (10,000 registros)
 ```
 
 ---
 
-### Paso 3: (Opcional) Infectar Datos con Vulnerabilidades
+## 🎯 Ejecución de Pipeline
 
-Este paso simula datos con problemas de seguridad y calidad para testing:
-
-```bash
-# 3.1 Infectar datos con 10 tipos de ataques OWASP
-python -m src.modules.data_infection.infector data/samples/customers.csv data/output/customers_infected.csv
-
-# 3.2 Ver reporte de infección
-type data\output\infection_report.txt
-```
-
-**Tipos de ataques inyectados:**
-- SQL Injection (`' OR '1'='1`)
-- XSS (`<script>alert('XSS')</script>`)
-- Command Injection (`; rm -rf /`)
-- NoSQL Injection (`{"$ne": null}`)
-- Path Traversal (`../../etc/passwd`)
-- Data Leakage (SSN, API keys, passwords)
-- Outliers (valores 1000x normales)
-- Missing Data (nulls estratégicos)
-- Duplicates (registros duplicados)
-- Format Corruption (encoding corrupto)
-
----
-
-### Paso 4: Ejecutar Pipeline Completo
+### Primera Ejecución
 
 ```bash
-# 4.1 Ejecutar pipeline con datos infectados
+# Ejecutar pipeline de ejemplo
 python -m src.cli run pipeline -c examples/complete_pipeline.yml
 ```
 
-**El pipeline ejecutará 3 etapas:**
+**El pipeline ejecuta 4 etapas:**
 
-1. **INGESTION** → Carga datos desde CSV
-2. **VALIDATION** → Detecta vulnerabilidades y valida calidad  
-   - 4 suites: Quality, Security, Anomaly, Business Rules
-   - 39 expectativas configuradas
-3. **TRANSFORMATION** → Filtra y transforma datos limpios
+1. **INGESTION** → Carga datos desde múltiples fuentes
+   - PostgreSQL: `sample_data.customers` (10,000 registros)
+   - CSV: `transactions.csv` (50,000 registros)
+
+2. **VALIDATION** → 9 suites de validación con 33 expectativas
+   - Suite 01: Estructura básica (3 expectativas)
+   - Suite 02: Identificadores únicos (5 expectativas)
+   - Suite 03: Formatos personales (6 expectativas)
+   - Suite 04: Valores de negocio (4 expectativas)
+   - Suite 05: Fechas (2 expectativas)
+   - Suite 06: Calidad de datos (4 expectativas)
+   - Suite 07: Seguridad - inyección (3 expectativas)
+   - Suite 08: Seguridad - datos sensibles (2 expectativas)
+   - Suite 09: Reglas de negocio (4 expectativas)
+
+3. **TRANSFORMATION** → Limpia y transforma datos
+   - Filtra registros activos
+   - Crea segmentación de clientes
+   - Normaliza nombres
+
+4. **OUTPUT** → Genera archivos en múltiples formatos
+   - CSV: `data/output/active_customers.csv`
+   - Excel: `data/output/customers_enriched.xlsx`
+   - Parquet: `data/output/customers_enriched.parquet`
+   - PostgreSQL: `sample_data.customers_processed`
 
 **Salida esperada:**
 ```
-Pipeline: CustomerDataPipeline
+Execution completed
+  Status: completed
+  Duration: 8.61s
+  Records: 60,000
+  Report: reports/execution_XXXXX_YYYYMMDD_HHMMSS.html
+```
+
+### Ver Resultados
+
+```bash
+# Ver estado de la base de datos
+python scripts/db_utils.py status
+
+# Debe mostrar:
+# - pipeline.executions: 1 registro (tu ejecución)
+# - pipeline.validation_results: 33 registros (una por expectativa)
+# - sample_data.customers_processed: ~8,000 registros (filtrados)
+```
+
+### Abrir Reporte HTML
+
+- Localización: `reports/execution_XXXXX_YYYYMMDD_HHMMSS.html`
+- El reporte incluye:
+  - ✅ Resumen ejecutivo con quality score
+  - 📊 Tabla de validaciones por suite
+  - ❌ Detalles de validaciones fallidas
+  - 📈 Métricas de rendimiento por etapa
 Status: completed
 Duration: ~2.5s
-Quality Score: 23.1%
-Vulnerabilities: 3 detected
+Quality Score: 100%
+Vulnerabilities: 0
 Report: reports/execution_XXXXX_YYYYMMDD_HHMMSS.html
+```
+
+**Si obtienes error "CSV file not found":**
+```bash
+# Genera los datos primero:
+python scripts/generate_samples.py
+
+# (Opcional) Infecta los datos:
+python -m src.cli infect -c examples/infection_config.yml
+
+# Luego ejecuta el pipeline:
+python -m src.cli run pipeline -c examples/complete_pipeline.yml
 ```
 
 ---
@@ -117,79 +222,106 @@ start reports\execution_*.html
 
 ---
 
-### Paso 6: Consultar Base de Datos de Auditoría
+## 🗄️ Base de Datos PostgreSQL
+
+### Schemas Principales
+
+- **`pipeline`** - Auditoría y métricas
+  - `pipelines` - Registro de pipelines
+  - `executions` - Historial de ejecuciones
+  - `validation_results` - Resultados de validaciones
+  - `audit_logs` - Logs detallados
+
+- **`sample_data`** - Datos procesados
+  - `customers` - Datos de ejemplo
+  - `customers_processed` - Output del pipeline
+
+> **📚 Gestión avanzada:** Para comandos de administración, queries SQL y troubleshooting, ver [docs/DATABASE.md](docs/DATABASE.md)
+
+---
+
+## 🎯 Workflows Comunes
+
+### A. Workflow Básico (Datos Limpios)
+
+Prueba el pipeline con datos sin vulnerabilidades:
 
 ```bash
-# 6.1 Ver últimas ejecuciones
-docker exec -i framework_postgres psql -U admin -d pipeline_db -c "
-  SELECT execution_id, pipeline_name, status, 
-         duration_seconds, start_time 
+# 1. Generar datos
+python scripts/generate_samples.py
+
+# 2. Ejecutar pipeline (usa data/samples/customers.csv por defecto)
+python -m src.cli run pipeline -c examples/complete_pipeline.yml
+
+# 3. Ver reporte
+start reports\execution_*.html
+```
+
+**Resultado esperado:** Quality Score 100%, 0 vulnerabilidades
+
+---
+
+### B. Workflow con Testing de Seguridad (Datos Infectados)
+
+Prueba la detección de vulnerabilidades OWASP:
+
+```bash
+# 1. Generar datos limpios
+python scripts/generate_samples.py
+
+# 2. Infectar datos con vulnerabilidades
+python -m src.cli infect -c examples/infection_config.yml
+
+# 3. Cambiar el pipeline para usar datos infectados
+# Editar examples/complete_pipeline.yml línea 20:
+#   path: "data/output/customers_infected.csv"
+
+# 4. Ejecutar pipeline
+python -m src.cli run pipeline -c examples/complete_pipeline.yml
+
+# 5. Ver reporte con vulnerabilidades detectadas
+start reports\execution_*.html
+```
+
+**Resultado esperado:** Quality Score ~23%, 3+ vulnerabilidades detectadas
+
+---
+
+### C. Análisis de Resultados en Base de Datos
+
+```bash
+# Ver últimas ejecuciones
+docker exec -i framework_postgres psql -U admin -d data_framework -c "
+  SELECT 
+    pipeline_id,
+    status,
+    start_time,
+    duration_seconds,
+    records_processed,
+    quality_score
   FROM pipeline.executions 
-  ORDER BY start_time DESC LIMIT 5;"
+  ORDER BY start_time DESC 
+  LIMIT 5;"
 
-# 6.2 Ver validaciones fallidas de última ejecución
-docker exec -i framework_postgres psql -U admin -d pipeline_db -c "
-  SELECT rule_name, rule_type, failed_count, passed 
-  FROM pipeline.validation_results 
-  WHERE execution_id = (
-    SELECT execution_id FROM pipeline.executions 
-    ORDER BY start_time DESC LIMIT 1
-  )
-  ORDER BY failed_count DESC;"
-
-# 6.3 Ver vulnerabilidades de seguridad detectadas
-docker exec -i framework_postgres psql -U admin -d pipeline_db -c "
-  SELECT rule_name, failed_count, 
-         failure_details::jsonb->0->'kwargs'->>'column' as column,
-         failure_details::jsonb->0->'kwargs'->>'regex' as pattern
-  FROM pipeline.validation_results 
-  WHERE rule_name = 'security_detection_suite' 
-        AND passed = false
-  ORDER BY timestamp DESC LIMIT 10;"
+# Ver vulnerabilidades detectadas
+docker exec -i framework_postgres psql -U admin -d data_framework -c "
+  SELECT 
+    rule_name,
+    passed,
+    failed_count,
+    timestamp
+  FROM pipeline.validation_results
+  WHERE rule_name = 'security_detection_suite'
+  ORDER BY timestamp DESC
+  LIMIT 10;"
 ```
 
 ---
-
-### Paso 7: Ver Datos Procesados
-
-Los datos limpios y transformados se guardan en múltiples formatos:
-
-```bash
-# 7.1 CSV procesado
-type data\output\active_customers.csv
-
-# 7.2 Excel enriquecido
-start data\output\customers_enriched.xlsx
-
-# 7.3 Parquet optimizado
-# (usar pandas o herramientas de análisis)
-
-# 7.4 PostgreSQL
-docker exec -i framework_postgres psql -U admin -d pipeline_db -c "
-  SELECT * FROM sample_data.customers_processed LIMIT 10;"
-```
-
----
-
-## � Workflows Comunes
-
-### A. Pipeline con Datos Limpios (Testing Normal)
-
-```bash
-# Generar datos → Ejecutar pipeline → Ver reporte
-python scripts/generate_sample_data.py
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
 start reports\execution_*.html
-```
 
-### B. Pipeline con Security Testing (Datos Infectados)
-
-```bash
-# Generar → Infectar → Ejecutar → Analizar vulnerabilidades
-python scripts/generate_sample_data.py
-python -m src.modules.data_infection.infector data/samples/customers.csv data/output/customers_infected.csv
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
-start reports\execution_*.html
+# Para re-generar datos desde cero:
+python scripts/generate_samples.py
+# (El script genera tanto datos limpios como infectados)
 ```
 
 ### C. Comparar Resultados (Antes vs Después de Infección)
@@ -381,18 +513,16 @@ python -m src.modules.data_infection.infector <input.csv> <output_infected.csv> 
 
 ```bash
 # EJECUTAR PIPELINE
-python -m src.cli run pipeline -c <config.yml>     # Ejecutar desde config
-python -m src.cli run pipeline -n <pipeline_name>  # Ejecutar pipeline registrado
+python -m src.cli run pipeline -c <config.yml>     # Ejecutar desde config YAML
 
-# GESTIÓN DE PIPELINES
-python -m src.cli list pipelines                   # Listar todos los pipelines
-python -m src.cli list pipelines --status active   # Filtrar por status
+# EJEMPLO REAL:
+python -m src.cli run pipeline -c examples/complete_pipeline.yml
 
-# VALIDACIÓN DE CONFIGURACIÓN
-python -m src.cli validate config -p <config.yml>  # Validar YAML antes de ejecutar
+# GENERAR DATOS DE EJEMPLO
+python scripts/generate_samples.py                 # Genera datos limpios y infectados
 
-# INFECCIÓN DE DATOS
-python -m src.modules.data_infection.infector <input> <output> [--infection-rate 0.1]
+# VERIFICAR INSTALACIÓN
+python scripts/test_connections.py                 # (si existe) Test de conexiones
 ```
 - Valida esquema (Pandera)
 - Valida calidad (Great Expectations)
@@ -441,71 +571,11 @@ pipeline.pipelines           -- Definición de pipelines
 pipeline.executions          -- Historial de ejecuciones
 pipeline.validation_results  -- Resultados detallados de validaciones
 
--- sample_data: Datos procesados
-sample_data.customers_processed  -- Output final del pipeline
-```
-
-### Queries Útiles
-
-```sql
--- 1. Ver últimas 10 ejecuciones con métricas
-SELECT 
-    execution_id,
-    pipeline_name,
-    status,
-    duration_seconds,
-    records_processed,
-    quality_score,
-    start_time
-FROM pipeline.executions
-ORDER BY start_time DESC
-LIMIT 10;
-
--- 2. Validaciones fallidas por tipo
-SELECT 
-    rule_name,
-    rule_type,
-    COUNT(*) as total_failures,
-    SUM(failed_count) as total_records_affected
-FROM pipeline.validation_results
-WHERE passed = false
-GROUP BY rule_name, rule_type
-ORDER BY total_failures DESC;
-
--- 3. Vulnerabilidades de seguridad por columna
-SELECT 
-    failure_details::jsonb->0->'kwargs'->>'column' as column_name,
-    failure_details::jsonb->0->'kwargs'->>'regex' as attack_pattern,
-    COUNT(*) as detections
-FROM pipeline.validation_results
-WHERE rule_name = 'security_detection_suite' 
-      AND passed = false
-GROUP BY column_name, attack_pattern
-ORDER BY detections DESC;
-
--- 4. Quality score trend (últimas 30 ejecuciones)
-SELECT 
-    execution_id,
-    pipeline_name,
-    quality_score,
-    start_time::date as execution_date
-FROM pipeline.executions
-WHERE pipeline_name = 'CustomerDataPipeline'
-ORDER BY start_time DESC
-LIMIT 30;
-
--- 5. Pipelines más lentos (promedio)
-SELECT 
-    pipeline_name,
-    COUNT(*) as executions,
-    AVG(duration_seconds) as avg_seconds,
-    MIN(duration_seconds) as min_seconds,
-    MAX(duration_seconds) as max_seconds
-FROM pipeline.executions
-WHERE status = 'completed'
-GROUP BY pipeline_name
-ORDER BY avg_seconds DESC;
-```
+**📚 Documentación completa:** [docs/DATABASE.md](docs/DATABASE.md)
+- Todos los comandos de db_utils.py con ejemplos
+- Esquema completo de tablas
+- 11+ queries SQL útiles para análisis
+- Troubleshooting de base de datos
 
 ---
 
@@ -544,8 +614,7 @@ data-pipeline-framework/
 │
 ├── scripts/
 │   ├── init_db.sql                     # Schema PostgreSQL
-│   ├── generate_sample_data.py         # Datos sintéticos
-│   └── test_connections.py             # Test de conexiones
+│   └── generate_samples.py             # ✨ Genera datos sintéticos (limpios + infectados)
 │
 ├── data/
 │   ├── samples/                        # Datos de ejemplo
@@ -587,15 +656,15 @@ data-pipeline-framework/
 - Clean (normalización)
 
 ### ✅ Security Detection
-- 16 patrones de detección
-- SQL Injection
-- XSS (Cross-Site Scripting)
-- Command Injection
-- NoSQL Injection
-- LDAP Injection
-- XML External Entities
-- Path Traversal
-- Data Leakage (PII, secrets)
+- 16 patrones de detección en Great Expectations
+- SQL Injection (detecta: `' OR '1'='1`, `--`, `union`, `select`)
+- XSS (detecta: `<script>`, `javascript:`, `onerror`)
+- Command Injection (detecta: `|`, `&&`, `;`, backticks)
+- NoSQL Injection (detecta: `$ne`, `$gt`, `$where`)
+- LDAP Injection (detecta: `*`, `(`, `)`)
+- XML External Entities (detecta: `<!CDATA`, `<!DOCTYPE`)
+- Path Traversal (detecta: `../`, `..\`)
+- Data Leakage (detecta: SSN patterns, API keys, passwords, secrets)
 
 ### ✅ Reporting
 - HTML profesional con diseño corporativo
@@ -632,12 +701,12 @@ data-pipeline-framework/
 # Verificar que el contenedor está corriendo
 docker ps | findstr postgres
 
-# Si no está corriendo, iniciar
-docker-compose up -d postgres
-
 # Ver logs
 docker logs framework_postgres
 ```
+
+**Solución:** Si PostgreSQL no está corriendo, ver [Instalación Rápida](#instalación-rápida-automatizada) para iniciar servicios.
+
 
 ### Error: "File not found" al ejecutar pipeline
 ```bash
@@ -666,26 +735,26 @@ start reports\execution_*.html
 
 ---
 
-## 📖 Recursos Adicionales
-
-- **Great Expectations Docs**: https://docs.greatexpectations.io/
-- **Pandera Docs**: https://pandera.readthedocs.io/
-- **OWASP Top 10**: https://owasp.org/www-project-top-ten/
-- **PostgreSQL Docs**: https://www.postgresql.org/docs/
-
----
-
-## 🆘 Soporte
+## 🆘 Soporte y Troubleshooting
 
 **Issues comunes:**
-1. PostgreSQL connection → Verificar docker-compose
+1. PostgreSQL connection → Ver [docs/DATABASE.md - Troubleshooting](docs/DATABASE.md#troubleshooting)
 2. File not found → Generar datos sintéticos primero
 3. Validation warnings → Son esperados con datos infectados
+4. Base de datos lenta → Ver [docs/DATABASE.md - Optimización](docs/DATABASE.md#troubleshooting)
 
-**Para más ayuda:**
+**Recursos útiles:**
 - Ver logs completos en terminal
-- Revisar reportes HTML generados
-- Consultar base de datos PostgreSQL
+- Revisar reportes HTML generados en `reports/`
+- Consultar [docs/DATABASE.md](docs/DATABASE.md) para gestión de base de datos
+- Revisar [docs/GUIA_COMPLETA.md](docs/GUIA_COMPLETA.md) para arquitectura
+
+**Documentación adicional:**
+- **DATABASE.md**: Gestión completa de base de datos
+- **GUIA_COMPLETA.md**: Arquitectura y uso avanzado
+- **Great Expectations**: https://docs.greatexpectations.io/
+- **Pandera**: https://pandera.readthedocs.io/
+- **OWASP Top 10**: https://owasp.org/www-project-top-ten/
 
 ---
 
