@@ -1,0 +1,351 @@
+# ============================================================================
+# Data Pipeline Framework - Pipeline Configuration
+# ============================================================================
+# Pipeline completo para ingesta, validación, transformación y carga de datos
+#
+# Datasets:
+#   - customers: 10,000 registros con 15 columnas
+#   - transactions: 50,000 registros con 10 columnas
+#
+# Validaciones organizadas por categoría:
+#   📋 ESTRUCTURA: IDs únicos, tipos de datos
+#   📊 CALIDAD: Completitud, formatos, rangos
+#   🔒 SEGURIDAD: Automática (30+ checks OWASP)
+#   💼 NEGOCIO: Reglas específicas del dominio
+# ============================================================================
+
+pipeline:
+  name: "CustomerTransactionPipeline"
+  description: "Pipeline completo de datos de clientes y transacciones"
+  schedule: "@daily"
+
+# ============================================================================
+# STAGE 1: INGESTION
+# ============================================================================
+# Soporta múltiples fuentes: CSV, PostgreSQL, Parquet, JSON, Excel
+# ============================================================================
+ingestion:
+  sources:
+    # Opción 1: Desde PostgreSQL
+    - name: "customers_postgres"
+      type: "postgres"
+      # query: "SELECT * FROM sample_data.customers"
+      query: "SELECT * FROM sample_data.customers"
+      output_dataset: "raw_customers"
+      connection:
+        host: "${POSTGRES_HOST}"
+        port: "${POSTGRES_PORT}"
+        database: "${POSTGRES_DB}"
+        user: "${POSTGRES_USER}"
+        password: "${POSTGRES_PASSWORD}"
+    
+    # Opción 2: Desde archivo CSV (comentado - alternativamente)
+    # - name: "customers_csv"
+    #   type: "csv"
+    #   path: "data/samples/customers.csv"
+    #   output_dataset: "raw_customers"
+    
+    # - name: "transactions_postgres"
+    #   type: "postgres"
+    #   # query: "SELECT * FROM sample_data.transactions"
+    #   query: "SELECT * FROM sample_data.transactions"
+    #   output_dataset: "raw_transactions"
+    #   connection:
+    #     host: "${POSTGRES_HOST}"
+    #     port: "${POSTGRES_PORT}"
+    #     database: "${POSTGRES_DB}"
+    #     user: "${POSTGRES_USER}"
+    #     password: "${POSTGRES_PASSWORD}"
+    
+    # Alternativamente desde CSV:
+    - name: "transactions_csv"
+      type: "csv"
+      path: "data/samples/transactions.csv"
+      output_dataset: "raw_transactions"
+
+# ============================================================================
+# STAGE 2: VALIDATION
+# ============================================================================
+# Sistema DUAL de validación (automático según configuración):
+#   📦 PANDERA: Validación de esquemas (tipos, rangos, nullable)
+#   ✅ GREAT EXPECTATIONS: Validación de calidad (patterns, business rules)
+#
+# Organización por categorías:
+#   🔒 SEGURIDAD: Automática según security_level (strict/standard/relaxed)
+#   📊 CALIDAD: Completitud, formatos, rangos personalizados
+#   💼 NEGOCIO: Reglas de dominio y compliance
+# ============================================================================
+validation:
+  schema:
+    # ========================================================================
+    # DATASET: CUSTOMERS
+    # ========================================================================
+    raw_customers:
+      security_level: strict
+      quality_threshold: 0.95
+      
+      columns:
+        # ---- IDENTIFICADORES ----
+        customer_id:
+          type: uuid
+          required: true
+          unique: true
+        
+        # ---- INFORMACIÓN DE CONTACTO ----
+        name:
+          type: name
+          required: true
+          min_length: 2
+          max_length: 100
+        
+        email:
+          type: email
+          required: true
+          unique: true
+          # Nota: no_test_values se aplica automáticamente para email
+        
+        phone:
+          type: phone
+          required: false
+          mostly: 0.90
+        
+        address:
+          type: text
+          required: false
+          min_length: 10
+          max_length: 250
+          mostly: 0.95
+        
+        # ---- INFORMACIÓN TEMPORAL ----
+        registration_date:
+          type: datetime
+          required: true
+        
+        last_login:
+          type: datetime
+          required: false
+          mostly: 0.90
+        
+        # ---- ESTADO Y MÉTRICAS ----
+        account_status:
+          type: enum
+          values: ["active", "inactive", "suspended"]
+          required: true
+        
+        lifetime_value:
+          type: numeric
+          min: 0
+          max: 50000
+          required: true
+        
+        # ---- DATOS ADICIONALES ----
+        user_comment:
+          type: text
+          required: false
+          max_length: 5000
+          mostly: 0.80
+        
+        website:
+          type: url
+          required: false
+          mostly: 0.60
+        
+        ip_address:
+          type: ipv4
+          required: false
+          mostly: 0.70
+        
+        credit_card_last4:
+          type: text
+          required: false
+          min_length: 4
+          max_length: 4
+          mostly: 0.60
+        
+        age:
+          type: integer
+          min: 18
+          max: 100
+          required: true
+        
+        postal_code:
+          type: postal_code_es
+          required: false
+          mostly: 0.70
+      
+      # ---- VALIDACIONES ENTRE COLUMNAS ----
+      cross_field_validations:
+        - type: date_range
+          start_column: registration_date
+          end_column: last_login
+          allow_equal: true
+      
+      # ---- REGLAS DE NEGOCIO ----
+      business_rules:
+        - type: percentage_in_category
+          column: account_status
+          category: "active"
+          percentage: 0.70
+    
+    # ========================================================================
+    # DATASET: TRANSACTIONS
+    # ========================================================================
+    raw_transactions:
+      security_level: strict
+      quality_threshold: 0.98
+      
+      columns:
+        # ---- IDENTIFICADORES ----
+        transaction_id:
+          type: uuid
+          required: true
+          unique: true
+        
+        customer_id:
+          type: uuid
+          required: true
+        
+        # ---- INFORMACIÓN TEMPORAL ----
+        timestamp:
+          type: datetime
+          required: true
+        
+        # ---- INFORMACIÓN FINANCIERA ----
+        amount:
+          type: numeric
+          min: 0.01
+          max: 10000
+          required: true
+        
+        payment_method:
+          type: enum
+          values: ["credit_card", "debit_card", "paypal", "bank_transfer", "crypto", "cash"]
+          required: true
+        
+        # ---- CATEGORIZACIÓN ----
+        category:
+          type: enum
+          values: ["Electronics", "Clothing", "Food", "Books", "Other"]
+          required: true
+        
+        status:
+          type: enum
+          values: ["completed", "pending", "cancelled"]
+          required: true
+        
+        # ---- DETALLES ----
+        description:
+          type: text
+          required: true
+          min_length: 5
+          max_length: 500
+        
+        merchant_name:
+          type: text
+          required: true
+          min_length: 2
+          max_length: 100
+        
+        ip_address:
+          type: ipv4
+          required: true
+      
+      # ---- REGLAS DE NEGOCIO ----
+      business_rules:
+        - type: percentage_in_category
+          column: status
+          category: "completed"
+          percentage: 0.80
+
+# ============================================================================
+# STAGE 3: TRANSFORMATION
+# ============================================================================
+transformation:
+  # Filtrar clientes activos
+  - input_dataset: "raw_customers"
+    output_dataset: "active_customers"
+    operations:
+      - type: "filter"
+        condition: "account_status == 'active'"
+  
+  # Enriquecer clientes con segmentación
+  - input_dataset: "active_customers"
+    output_dataset: "customers_enriched"
+    operations:
+      - type: "derive"
+        new_column: "customer_segment"
+        expression: "pd.cut(lifetime_value, bins=[0, 2000, 5000, 10000], labels=['Bronze', 'Silver', 'Gold'])"
+  
+  # Filtrar transacciones completadas
+  - input_dataset: "raw_transactions"
+    output_dataset: "completed_transactions"
+    operations:
+      - type: "filter"
+        condition: "status == 'completed'"
+
+# ============================================================================
+# STAGE 4: OUTPUT
+# ============================================================================
+# Soporta múltiples destinos:
+#   - CSV/Excel/Parquet: Archivos locales
+#   - PostgreSQL: Tablas en base de datos
+# ============================================================================
+output:
+  # ---- ACTIVE CUSTOMERS ----
+  - name: "export_active_customers_csv"
+    input_dataset: "active_customers"
+    type: "csv"
+    path: "data/output/active_customers.csv"
+  
+  - name: "export_active_customers_postgres"
+    input_dataset: "active_customers"
+    type: "postgres"
+    table: "active_customers"
+    schema: "processed_data"
+    if_exists: "replace"
+  
+  - name: "export_completed_transactions_csv"
+    input_dataset: "completed_transactions"
+    type: "csv"
+    path: "data/output/completed_transactions.csv"
+  
+  # - name: "export_completed_transactions_postgres"
+  #   input_dataset: "completed_transactions"
+  #   type: "postgres"
+  #   table: "completed_transactions"
+  #   schema: "processed_data"
+  #   if_exists: "replace"
+  
+  # - name: "export_enriched_excel"
+  #   input_dataset: "customers_enriched"
+  #   type: "excel"
+  #   path: "data/output/customers_enriched.xlsx"
+  
+  - name: "export_enriched_postgres"
+    input_dataset: "customers_enriched"
+    type: "postgres"
+    table: "customers_enriched"
+    schema: "processed_data"
+    if_exists: "replace"
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+airflow:
+  dag_id: "customer_transaction_pipeline"
+  default_args:
+    owner: "data_team"
+    email_on_failure: true
+    retries: 2
+    retry_delay_minutes: 5
+
+logging:
+  level: "INFO"
+  format: "detailed"
+  output: "./logs/pipeline.log"
+
+error_handling:
+  on_validation_failure: "stop"
+  max_error_rate: 0.05
+  save_failed_records: true
+  failed_records_path: "./data/output/failed_records.csv"

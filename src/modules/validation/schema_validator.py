@@ -3,15 +3,48 @@ Advanced Schema Validator - Production-Ready Validation System
 
 Sistema completo de validación que cubre:
 1. CALIDAD DE DATOS: Completitud, Unicidad, Consistencia, Exactitud
-2. SEGURIDAD: OWASP Top 10+, Data Leakage, Injection Attacks  
+2. SEGURIDAD AUTOMÁTICA: OWASP Top 10+, Data Leakage, Injection Attacks  
 3. INTEGRIDAD: Cross-field validation, Business rules
 4. CONFORMIDAD: Formatos estándar, Regulaciones (GDPR, PCI-DSS)
 
 Arquitectura:
 - 40+ tipos de datos semánticos
+- **SEGURIDAD AUTOMÁTICA GLOBAL**: El análisis se aplica a TODAS las columnas
+  según su tipo y el security_level global (strict/standard/relaxed)
 - Validaciones compuestas (cross-field)
 - Niveles de severidad (critical, error, warning, info)
 - Extensible y configurable para cualquier estructura de datos
+
+IMPORTANTE - Seguridad Automática:
+==============================
+El análisis de seguridad NO se configura por columna (opt-in).
+En su lugar, se aplica AUTOMÁTICAMENTE a todas las columnas según:
+  1. El tipo de columna (text, web, pii, etc.)
+  2. El security_level global (strict/standard/relaxed)
+  
+Ejemplo:
+  schema:
+    dataset:
+      security_level: strict  # Aplica 30+ checks a TODAS las columnas
+      columns:
+        user_comment:
+          type: text
+          # AUTOMÁTICO: SQL injection, XSS, Command injection, Data leakage
+        
+        email:
+          type: email  
+          # AUTOMÁTICO: XSS, Data leakage adaptado a emails
+        
+        website:
+          type: url
+          # AUTOMÁTICO: XSS, SSRF, Command injection
+
+Para desactivar (raro):
+  column_name:
+    type: text
+    skip_security: true  # Omite TODOS los checks
+    # O específicamente:
+    skip_security_checks: ['sql_injection', 'xss_basic']
 """
 
 from typing import Dict, List, Any, Optional, Tuple
@@ -496,6 +529,7 @@ class DataTypeRegistry:
     }
 
 
+class SchemaValidator:
     """Validador avanzado production-ready con soporte completo de seguridad y calidad"""
     
     @classmethod
@@ -518,6 +552,7 @@ class DataTypeRegistry:
         cross_field = schema_config.get('cross_field_validations', [])
         business_rules = schema_config.get('business_rules', [])
         quality_threshold = schema_config.get('quality_threshold', 0.95)
+        security_level = schema_config.get('security_level', 'strict')  # strict | standard | relaxed
         
         # Agrupar por categoría
         suites = {
@@ -532,7 +567,7 @@ class DataTypeRegistry:
         
         # 1. Procesar validaciones por columna
         for col_name, col_config in columns.items():
-            expectations = cls._process_column(col_name, col_config, quality_threshold)
+            expectations = cls._process_column(col_name, col_config, quality_threshold, security_level)
             
             for exp in expectations:
                 category = exp.pop('_category', ValidationCategory.DATA_TYPE.value)
@@ -550,16 +585,16 @@ class DataTypeRegistry:
             for exp in expectations:
                 suites[ValidationCategory.BUSINESS_RULES.value].append(exp)
         
-        # Generar estructura final
+        # Generar estructura final con nombres descriptivos
         result = []
         suite_order = [
-            (ValidationCategory.STRUCTURE.value, '01_estructura'),
-            (ValidationCategory.DATA_TYPE.value, '02_tipos_formato'),
-            (ValidationCategory.DATA_QUALITY.value, '03_calidad_datos'),
-            (ValidationCategory.SECURITY.value, '04_seguridad'),
-            (ValidationCategory.INTEGRITY.value, '05_integridad'),
-            (ValidationCategory.BUSINESS_RULES.value, '06_reglas_negocio'),
-            (ValidationCategory.COMPLIANCE.value, '07_cumplimiento')
+            (ValidationCategory.STRUCTURE.value, '01_Estructura_Basica'),
+            (ValidationCategory.DATA_TYPE.value, '02_Tipos_y_Formatos'),
+            (ValidationCategory.DATA_QUALITY.value, '03_Calidad_de_Datos'),
+            (ValidationCategory.SECURITY.value, '04_Seguridad_OWASP'),
+            (ValidationCategory.INTEGRITY.value, '05_Integridad_Referencial'),
+            (ValidationCategory.BUSINESS_RULES.value, '06_Reglas_de_Negocio'),
+            (ValidationCategory.COMPLIANCE.value, '07_Cumplimiento_Normativo')
         ]
         
         for category_key, suite_name in suite_order:
@@ -578,7 +613,8 @@ class DataTypeRegistry:
         cls, 
         col_name: str, 
         col_config: Dict[str, Any],
-        quality_threshold: float
+        quality_threshold: float,
+        security_level: str = 'strict'
     ) -> List[Dict[str, Any]]:
         """Procesa una columna y genera todas sus expectativas"""
         expectations = []
@@ -610,8 +646,8 @@ class DataTypeRegistry:
         type_expectations = cls._get_type_validations(col_name, col_type, col_config, type_def)
         expectations.extend(type_expectations)
         
-        # 3. VALIDACIONES DE SEGURIDAD  
-        security_expectations = cls._get_security_validations(col_name, col_config, type_def)
+        # 3. VALIDACIONES DE SEGURIDAD (AUTOMÁTICAS según security_level)
+        security_expectations = cls._get_security_validations(col_name, col_config, type_def, security_level)
         expectations.extend(security_expectations)
         
         # 4. VALIDACIONES DE CALIDAD
@@ -722,55 +758,137 @@ class DataTypeRegistry:
         cls, 
         col_name: str, 
         col_config: Dict,
-        type_def: Dict
+        type_def: Dict,
+        security_level: str = 'strict'
     ) -> List[Dict]:
-        """Genera validaciones de seguridad OWASP Top 10+ completas"""
+        """Genera validaciones de seguridad AUTOMÁTICAS según el tipo y nivel global"""
         expectations = []
         
-        # Security checks predefinidos por tipo
-        security_checks = list(type_def.get('security_checks', []))
+        # Verificar si seguridad está desactivada para esta columna
+        if col_config.get('skip_security', False):
+            return expectations
         
-        # O explícitos en config
-        if col_config.get('no_injection', False):
-            security_checks.extend([
-                'sql_injection', 'sql_injection_advanced', 'nosql_injection', 
+        # Checks específicos a omitir (opt-out)
+        skip_checks = set(col_config.get('skip_security_checks', []))
+        
+        # Determinar checks según tipo de columna y nivel de seguridad
+        col_category = type_def.get('category', 'text')
+        security_checks = set()
+        
+        # ============================================================================
+        # ANÁLISIS AUTOMÁTICO SEGÚN CATEGORÍA DE COLUMNA
+        # ============================================================================
+        
+        if col_category in ['text', 'contact', 'address', 'web']:
+            # TODAS las columnas de texto reciben análisis completo
+            
+            # A03:2021 - Injection (SIEMPRE)
+            security_checks.update([
+                'sql_injection', 'sql_injection_advanced', 'nosql_injection',
                 'ldap_injection', 'xpath_injection', 'command_injection',
                 'yaml_injection', 'template_injection', 'csv_injection'
             ])
-        
-        if col_config.get('no_xss', False):
-            security_checks.extend(['xss_basic', 'xss_advanced', 'xss_event_handlers'])
-        
-        if col_config.get('no_path_traversal', False):
-            security_checks.extend(['path_traversal', 'path_traversal_win', 'null_byte', 'file_inclusion'])
-        
-        if col_config.get('no_sensitive_data', False):
-            security_checks.extend([
-                'api_key_generic', 'aws_access_key', 'aws_secret_key', 
+            
+            # A03:2021 - XSS (SIEMPRE)
+            security_checks.update(['xss_basic', 'xss_advanced', 'xss_event_handlers'])
+            
+            # A04:2021 - Path Traversal (SIEMPRE)
+            security_checks.update(['path_traversal', 'path_traversal_win', 'null_byte', 'file_inclusion'])
+            
+            # A02:2021 - Data Leakage (SIEMPRE)
+            security_checks.update([
+                'api_key_generic', 'aws_access_key', 'aws_secret_key',
                 'github_token', 'slack_token', 'google_api_key',
                 'private_key', 'ssh_key', 'jwt_token', 'bearer_token',
                 'password_pattern', 'connection_string',
                 'ssn_pattern', 'credit_card_pattern'
             ])
+            
+            if security_level == 'strict':
+                # Checks adicionales en modo strict
+                security_checks.update([
+                    'xxe_injection', 'http_header_injection',
+                    'email_header_injection', 'crlf_injection',
+                    'serialization_gadget', 'deserialization_attack',
+                    'log_injection', 'privilege_escalation'
+                ])
         
-        if col_config.get('no_xxe', False):
-            security_checks.append('xxe_injection')
+        elif col_category == 'web':
+            # URLs: XSS + SSRF + Injection
+            security_checks.update([
+                'xss_basic', 'xss_advanced', 'command_injection',
+                'ssrf_patterns'
+            ])
+            if security_level in ['strict', 'standard']:
+                security_checks.update(['sql_injection', 'path_traversal'])
         
-        if col_config.get('no_ssrf', False):
-            security_checks.append('ssrf_patterns')
+        elif col_category in ['identifier', 'pii', 'financial']:
+            # IDs y datos sensibles: Data leakage + format validation
+            security_checks.update([
+                'api_key_generic', 'aws_access_key', 'github_token',
+                'private_key', 'jwt_token', 'password_pattern'
+            ])
+            
+            if col_category in ['pii', 'financial']:
+                # Verificar que no haya PII adicional
+                security_checks.update(['ssn_pattern', 'credit_card_pattern'])
         
-        if col_config.get('no_header_injection', False):
-            security_checks.extend(['http_header_injection', 'email_header_injection', 'crlf_injection'])
+        # Nivel 'relaxed': Solo checks críticos
+        if security_level == 'relaxed':
+            # Mantener solo los más críticos
+            critical_checks = {
+                'sql_injection', 'xss_basic', 'command_injection',
+                'private_key', 'aws_access_key', 'password_pattern',
+                'credit_card_pattern'
+            }
+            security_checks = security_checks.intersection(critical_checks)
         
-        # Generar expectations para cada check
-        for check in set(security_checks):  # set para eliminar duplicados
+        # Remover checks específicamente omitidos
+        security_checks = security_checks - skip_checks
+        
+        # Agregar checks predefinidos por tipo (si existen)
+        security_checks.update(type_def.get('security_checks', []))
+        
+        # ============================================================================
+        # GENERAR EXPECTATIONS
+        # ============================================================================
+        
+        # CRITICAL: GE deduplica expectativas del mismo tipo en la misma columna
+        # SOLUCIÓN: Combinar TODOS los patterns de seguridad en UN SOLO regex
+        security_patterns = []
+        security_check_names = []
+        has_case_insensitive = False
+        
+        for check in security_checks:
             if check in DataTypeRegistry.PATTERNS:
-                expectations.append({
-                    'expectation_type': 'expect_column_values_to_not_match_regex',
-                    'column': col_name,
-                    'regex': DataTypeRegistry.PATTERNS[check],
-                    '_category': ValidationCategory.SECURITY.value
-                })
+                pattern = DataTypeRegistry.PATTERNS[check]
+                
+                # Remover flags inline (?i) para evitar warnings de pandas
+                # Moveremos todos los flags al inicio del combined pattern
+                if pattern.startswith('(?i)'):
+                    pattern = pattern[4:]  # Remover '(?i)'
+                    has_case_insensitive = True
+                
+                security_patterns.append(pattern)
+                security_check_names.append(check)
+        
+        # Si hay patterns de seguridad, crear UNA SOLA expectativa con todos combinados
+        if security_patterns:
+            # Combinar patterns con alternación (|) y wrap each en grupo non-capturing
+            combined_pattern = '|'.join(f'(?:{pattern})' for pattern in security_patterns)
+            
+            # Si CUALQUIER pattern original tenía (?i), aplicarlo al inicio del combined pattern
+            if has_case_insensitive:
+                combined_pattern = '(?i)' + combined_pattern
+            
+            expectations.append({
+                'expectation_type': 'expect_column_values_to_not_match_regex',
+                'column': col_name,
+                'regex': combined_pattern,
+                '_category': ValidationCategory.SECURITY.value,
+                '_security_checks': ','.join(security_check_names),  # Lista de checks incluidos
+                '_security_patterns_count': len(security_patterns)
+            })
         
         return expectations
     
@@ -786,6 +904,11 @@ class DataTypeRegistry:
         
         # Anti-patterns (valores de prueba, dummy data)
         anti_patterns = list(type_def.get('anti_patterns', []))
+        
+        # AUTOMÁTICO: Para email, siempre validar que no sea sintético
+        col_type = col_config.get('type', 'text')
+        if col_type == 'email':
+            col_config['no_test_values'] = True
         
         if col_config.get('no_test_values', False):
             for pattern_key in ['test_email', 'dummy_phone', 'dummy_name']:

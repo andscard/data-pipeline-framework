@@ -7,8 +7,7 @@ import pandas as pd
 import numpy as np
 from faker import Faker
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,10 +17,9 @@ class SyntheticDataGenerator:
     """
     Generador de datos sintéticos realistas usando Faker.
     
-    Soporta generación de múltiples tipos de datos:
-    - Datos personales (nombres, emails, direcciones)
-    - Datos de transacciones
-    - Datos de clientes y productos
+    Genera datasets predefinidos de:
+    - Datos de clientes (generate_customer_data)
+    - Datos de transacciones (generate_transaction_data)
     """
     
     def __init__(self, locale: str = 'es_ES', seed: Optional[int] = None):
@@ -40,108 +38,65 @@ class SyntheticDataGenerator:
         self.locale = locale
         logger.info(f"SyntheticDataGenerator initialized with locale={locale}, seed={seed}")
     
-    def generate(
-        self,
-        schema: Dict[str, str],
-        num_records: int = 1000
-    ) -> pd.DataFrame:
-        """
-        Generar dataset según esquema definido.
-        
-        Args:
-            schema: Dict con nombre_columna: tipo_dato
-                Tipos soportados:
-                - 'int', 'float', 'string', 'bool'
-                - 'name', 'email', 'phone', 'address'
-                - 'date', 'datetime', 'timestamp'
-                - 'uuid', 'category'
-                - 'amount', 'price'
-            num_records: Número de registros a generar
-            
-        Returns:
-            pd.DataFrame con datos generados
-        """
-        logger.info(f"Generating {num_records} records with schema: {schema}")
-        
-        data = {}
-        
-        for column_name, column_type in schema.items():
-            data[column_name] = self._generate_column(column_type, num_records)
-        
-        df = pd.DataFrame(data)
-        logger.info(f"Generated dataset: {len(df)} records, {len(df.columns)} columns")
-        
-        return df
-    
-    def _generate_column(self, column_type: str, num_records: int) -> List[Any]:
-        """Generar datos para una columna según su tipo"""
-        
-        # Tipos numéricos
-        if column_type == 'int':
-            return np.random.randint(0, 1000, num_records).tolist()
-        
-        elif column_type == 'float':
-            return np.random.uniform(0, 1000, num_records).tolist()
-        
-        elif column_type == 'bool':
-            return np.random.choice([True, False], num_records).tolist()
-        
-        # Tipos de texto
-        elif column_type == 'string':
-            return [self.fake.word() for _ in range(num_records)]
-        
-        elif column_type == 'name':
-            return [self.fake.name() for _ in range(num_records)]
-        
-        elif column_type == 'email':
-            return [self.fake.email() for _ in range(num_records)]
-        
-        elif column_type == 'phone':
-            return [self.fake.phone_number() for _ in range(num_records)]
-        
-        elif column_type == 'address':
-            return [self.fake.address() for _ in range(num_records)]
-        
-        elif column_type == 'company':
-            return [self.fake.company() for _ in range(num_records)]
-        
-        # Tipos temporales
-        elif column_type == 'date':
-            return [self.fake.date_between(start_date='-1y', end_date='today') for _ in range(num_records)]
-        
-        elif column_type == 'datetime':
-            return [self.fake.date_time_between(start_date='-1y', end_date='now') for _ in range(num_records)]
-        
-        elif column_type == 'timestamp':
-            base = datetime.now()
-            return [(base - timedelta(seconds=np.random.randint(0, 86400*365))) for _ in range(num_records)]
-        
-        # Identificadores
-        elif column_type == 'uuid':
-            return [self.fake.uuid4() for _ in range(num_records)]
-        
-        elif column_type == 'category':
-            categories = ['A', 'B', 'C', 'D']
-            return np.random.choice(categories, num_records).tolist()
-        
-        # Financiero
-        elif column_type == 'amount' or column_type == 'price':
-            return np.random.uniform(10, 10000, num_records).round(2).tolist()
-        
-        else:
-            logger.warning(f"Unknown column type: {column_type}, using random integers")
-            return np.random.randint(0, 100, num_records).tolist()
-    
     def generate_customer_data(self, num_customers: int = 1000) -> pd.DataFrame:
         """
-        Generar dataset de clientes completo y realista.
+        Generar dataset de clientes completo y realista con datos LIMPIOS.
+        
+        Los datos generados son normales y válidos. Para probar el sistema de seguridad,
+        usa el módulo de infección que inyecta vulnerabilidades en los datos.
         
         Args:
             num_customers: Número de clientes a generar
             
         Returns:
-            pd.DataFrame con datos de clientes (8 columnas)
+            pd.DataFrame con datos de clientes (14 columnas):
+            - customer_id, name, email, phone, address
+            - registration_date, last_login, account_status, lifetime_value
+            - user_comment, website, ip_address, credit_card_last4, age, postal_code
         """
+        # Generar user_comment (campo de texto libre para comentarios de usuarios)
+        user_comments = []
+        for i in range(num_customers):
+            if i % 5 == 0:  # 20% sin comentario
+                user_comments.append(None)
+            else:
+                user_comments.append(self.fake.sentence(nb_words=np.random.randint(5, 15)))
+        
+        # Generar website (URLs válidas HTTPS)
+        websites = []
+        for i in range(num_customers):
+            if i % 3 == 0:  # 33% sin website
+                websites.append(None)
+            else:
+                websites.append(f"https://{self.fake.domain_name()}")
+        
+        # Generar ip_address (solo IPs públicas válidas)
+        ip_addresses = []
+        for i in range(num_customers):
+            if i % 4 == 0:  # 25% sin IP
+                ip_addresses.append(None)
+            else:
+                ip_addresses.append(self.fake.ipv4_public())
+        
+        # Generar credit_card_last4 (solo últimos 4 dígitos - CUMPLE PCI-DSS)
+        credit_card_last4 = []
+        for i in range(num_customers):
+            if i % 3 == 0:  # 33% sin tarjeta
+                credit_card_last4.append(None)
+            else:
+                credit_card_last4.append(str(np.random.randint(1000, 9999)))
+        
+        # Generar age (rango normal 18-80 años)
+        ages = np.random.randint(18, 80, num_customers).tolist()
+        
+        # Generar postal_code (formato español)
+        postal_codes = []
+        for i in range(num_customers):
+            if i % 4 == 0:  # 25% sin código postal
+                postal_codes.append(None)
+            else:
+                postal_codes.append(f"{np.random.randint(10000, 52999)}")
+        
         df = pd.DataFrame({
             'customer_id': [self.fake.uuid4() for _ in range(num_customers)],
             'name': [self.fake.name() for _ in range(num_customers)],
@@ -155,21 +110,66 @@ class SyntheticDataGenerator:
                 num_customers, 
                 p=[0.8, 0.15, 0.05]
             ),
-            'lifetime_value': np.random.uniform(100, 10000, num_customers).round(2)
+            'lifetime_value': np.random.uniform(100, 10000, num_customers).round(2),
+            # NUEVAS COLUMNAS PARA PROBAR SEGURIDAD
+            'user_comment': user_comments,
+            'website': websites,
+            'ip_address': ip_addresses,
+            'credit_card_last4': credit_card_last4,
+            'age': ages,
+            'postal_code': postal_codes
         })
         
         return df
     
     def generate_transaction_data(self, num_transactions: int = 10000) -> pd.DataFrame:
         """
-        Generar dataset de transacciones completo y realista.
+        Generar dataset de transacciones completo y realista con datos LIMPIOS.
+        
+        Los datos generados son normales y válidos. Para probar el sistema de seguridad,
+        usa el módulo de infección que inyecta vulnerabilidades en los datos.
         
         Args:
             num_transactions: Número de transacciones a generar
             
         Returns:
-            pd.DataFrame con datos de transacciones
+            pd.DataFrame con datos de transacciones (10 columnas):
+            - transaction_id, customer_id, timestamp, amount, category, status
+            - description, merchant_name, payment_method, ip_address
         """
+        # Generar description (descripciones normales de transacciones)
+        descriptions = []
+        description_templates = [
+            "Payment for",
+            "Purchase of",
+            "Order",
+            "Subscription to",
+            "Refund for",
+            "Service fee for"
+        ]
+        for i in range(num_transactions):
+            template = np.random.choice(description_templates)
+            descriptions.append(f"{template} {self.fake.bs().title()}")
+        
+        # Generar merchant_name (nombres normales de comercios)
+        normal_merchants = [
+            "Amazon", "eBay", "Walmart", "Target", "Best Buy",
+            "Home Depot", "Costco", "Apple Store", "Nike", "Zara",
+            "Starbucks", "McDonald's", "Subway", "Pizza Hut", "KFC",
+            "IKEA", "H&M", "Gap", "Macy's", "Nordstrom"
+        ]
+        merchant_names = np.random.choice(normal_merchants, num_transactions).tolist()
+        
+        # Generar payment_method
+        payment_methods = np.random.choice(
+            ['credit_card', 'debit_card', 'paypal', 'bank_transfer', 'crypto', 'cash'],
+            num_transactions,
+            p=[0.40, 0.25, 0.15, 0.10, 0.05, 0.05]
+        )
+        
+        # Generar ip_address (solo IPs públicas válidas)
+        ip_addresses = [self.fake.ipv4_public() for _ in range(num_transactions)]
+        
         df = pd.DataFrame({
             'transaction_id': [self.fake.uuid4() for _ in range(num_transactions)],
             'customer_id': [self.fake.uuid4() for _ in range(num_transactions)],
@@ -184,7 +184,12 @@ class SyntheticDataGenerator:
                 ['completed', 'pending', 'cancelled'],
                 num_transactions,
                 p=[0.85, 0.10, 0.05]
-            )
+            ),
+            # NUEVAS COLUMNAS PARA PROBAR SEGURIDAD
+            'description': descriptions,
+            'merchant_name': merchant_names,
+            'payment_method': payment_methods,
+            'ip_address': ip_addresses
         })
         
         return df

@@ -16,7 +16,8 @@ psycopg2-binary==2.9.9
 # DATA VALIDATION
 # ============================================
 great-expectations==0.18.2
-pandera[strategies]==0.17.2
+pandera[strategies]==0.28.1
+multimethod>=1.12
 
 # ============================================
 # UTILITIES

@@ -56,16 +56,20 @@ python scripts/db_utils.py status
   [EMPTY]  audit_logs                                   0 rows  |     72 kB
   [OK]     executions                                   4 rows  |     80 kB
   [OK]     pipelines                                    1 rows  |     80 kB
+  [OK]     stage_executions                            12 rows  |     80 kB
   [OK]     validation_results                          33 rows  |     80 kB
+  [OK]     validation_summary                           4 rows  |     80 kB
 
 
   Schema: SAMPLE_DATA
   ----------------------------------------------------------------------------
   [OK]     customers                               10,000 rows  |   2144 kB
-  [OK]     customers_processed                      8,038 rows  |   1856 kB
+  [OK]     customers_infected                      10,000 rows  |   2200 kB
+  [OK]     transactions                            50,000 rows  |   5120 kB
+  [OK]     transactions_infected                   50,000 rows  |   5200 kB
 
 ================================================================================
-  TOTAL: 18,076 registros
+  TOTAL: 120,054 registros
 ================================================================================
 ```
 
@@ -324,7 +328,9 @@ python scripts/db_utils.py clean-samples
 
   Limpiando datos...
   [OK] sample_data.customers limpiada
-  [OK] sample_data.customers_processed limpiada
+  [OK] sample_data.customers_infected limpiada
+  [OK] sample_data.transactions limpiada
+  [OK] sample_data.transactions_infected limpiada
 
   [SUCCESS] Limpieza completada
   [TIP] Regenera datos: python scripts/generate_sample_data.py -c 10000 -t 50000
@@ -332,7 +338,9 @@ python scripts/db_utils.py clean-samples
 
 **Tablas afectadas:**
 - ✅ `sample_data.customers` - Eliminada
-- ✅ `sample_data.customers_processed` - Eliminada
+- ✅ `sample_data.customers_infected` - Eliminada
+- ✅ `sample_data.transactions` - Eliminada
+- ✅ `sample_data.transactions_infected` - Eliminada
 - ❌ `pipeline.*` - **NO se toca**
 
 **Casos de uso:**
@@ -370,8 +378,10 @@ python scripts/db_utils.py clean-old --days 90         # >90 días
 
 **Tablas afectadas:**
 - ✅ `pipeline.executions` - Registros antiguos eliminados
+- ✅ `pipeline.stage_executions` - Stages asociados eliminados (CASCADE)
 - ✅ `pipeline.validation_results` - Resultados asociados eliminados (CASCADE)
-- ✅ `pipeline.audit_logs` - Logs asociados eliminados (CASCADE)
+- ✅ `pipeline.validation_summary` - Resúmenes asociados eliminados (CASCADE)
+- ✅ `pipeline.audit_logs` - Logs asociados eliminados (SET NULL)
 
 **Casos de uso:**
 - Limitar crecimiento de base de datos
@@ -401,11 +411,15 @@ python scripts/db_utils.py vacuum
     [OK] pipeline.audit_logs
     [OK] pipeline.executions
     [OK] pipeline.pipelines
+    [OK] pipeline.stage_executions
     [OK] pipeline.validation_results
+    [OK] pipeline.validation_summary
 
   Schema: sample_data
     [OK] sample_data.customers
-    [OK] sample_data.customers_processed
+    [OK] sample_data.customers_infected
+    [OK] sample_data.transactions
+    [OK] sample_data.transactions_infected
 
   [SUCCESS] Optimización completada
 ```
@@ -545,53 +559,85 @@ Logs de auditoría detallados de eventos del framework.
 |---------|------|-------------|
 | `id` | UUID | Identificador único (PK) |
 | `execution_id` | UUID | FK a executions.id (nullable) |
-| `log_level` | VARCHAR(20) | Nivel: DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `event_type` | VARCHAR(100) | Tipo de evento |
-| `message` | TEXT | Mensaje del log |
-| `details` | JSONB | Detalles adicionales en JSON |
 | `timestamp` | TIMESTAMP | Timestamp del evento |
+| `level` | VARCHAR(20) | Nivel: DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `module` | VARCHAR(100) | Módulo del framework |
+| `event` | VARCHAR(255) | Tipo de evento |
+| `correlation_id` | VARCHAR(100) | ID de correlación |
+| `context` | JSONB | Contexto adicional en JSON |
 
 **Índices:**
 - `audit_logs_pkey` (PRIMARY KEY) - id
 - `idx_audit_logs_execution_id` - execution_id
-- `idx_audit_logs_log_level` - log_level
-- `idx_audit_logs_event_type` - event_type
+- `idx_audit_logs_level` - level
+- `idx_audit_logs_module` - module
 - `idx_audit_logs_timestamp` - timestamp DESC
+- `idx_audit_logs_correlation_id` - correlation_id
+- `idx_audit_logs_context` - context (GIN index)
 
 ---
 
 ### Schema: `sample_data`
 
+Este schema contiene datos sintéticos de prueba generados por `generate_sample_data.py` y versiones infectadas con vulnerabilidades para testing de seguridad.
+
 #### Tabla: `customers`
 
-Datos sintéticos de clientes para pruebas (generados por `generate_sample_data.py`).
+Datos sintéticos de clientes para pruebas.
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
-| `customer_id` | VARCHAR(50) | ID único del cliente (PK) |
-| `name` | VARCHAR(255) | Nombre completo |
-| `email` | VARCHAR(255) | Email |
-| `phone` | VARCHAR(50) | Teléfono |
+| `customer_id` | TEXT | ID único del cliente (PK) |
+| `name` | TEXT | Nombre completo |
+| `email` | TEXT | Email |
+| `phone` | TEXT | Teléfono |
 | `address` | TEXT | Dirección completa |
-| `city` | VARCHAR(100) | Ciudad |
-| `country` | VARCHAR(100) | País |
-| `registration_date` | DATE | Fecha de registro |
-| `account_status` | VARCHAR(50) | Estado: active, inactive, suspended |
-| `lifetime_value` | NUMERIC(12,2) | Valor total del cliente |
-| `credit_score` | INTEGER | Score de crédito |
+| `registration_date` | TIMESTAMP | Fecha de registro |
+| `last_login` | TIMESTAMP | Última sesión |
+| `account_status` | TEXT | Estado: active, inactive, suspended |
+| `lifetime_value` | DOUBLE PRECISION | Valor total del cliente |
+| `user_comment` | TEXT | Comentarios del usuario |
+| `website` | TEXT | Sitio web |
+| `ip_address` | TEXT | Dirección IP |
+| `credit_card_last4` | TEXT | Últimos 4 dígitos de tarjeta |
+| `age` | BIGINT | Edad |
+| `postal_code` | TEXT | Código postal |
 
 ---
 
-#### Tabla: `customers_processed`
+#### Tabla: `customers_infected`
 
-Output del pipeline - clientes procesados y enriquecidos.
+Versiones de datos de clientes con ataques de inyección inyectados para testing de seguridad.
 
-Misma estructura que `customers` + columnas adicionales:
+**Estructura:** Igual que `customers` pero con datos maliciosos inyectados (SQL injection, XSS, command injection, etc.)
+
+**Propósito:** Testing del sistema de validación de seguridad (OWASP Top 10).
+
+---
+
+#### Tabla: `transactions`
+
+Datos sintéticos de transacciones para pruebas.
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
-| `customer_segment` | VARCHAR(50) | Segmento derivado (VIP, Regular, etc.) |
-| `processed_at` | TIMESTAMP | Timestamp de procesamiento |
+| `transaction_id` | TEXT | ID único de transacción (PK) |
+| `customer_id` | TEXT | FK a customers |
+| `amount` | DOUBLE PRECISION | Monto de transacción |
+| `transaction_date` | TIMESTAMP | Fecha de transacción |
+| `status` | TEXT | Estado: completed, pending, failed |
+| `payment_method` | TEXT | Método de pago |
+| `description` | TEXT | Descripción |
+
+---
+
+#### Tabla: `transactions_infected`
+
+Versiones de transacciones con datos maliciosos para testing.
+
+**Estructura:** Igual que `transactions` pero con payloads de ataque inyectados.
+
+**Propósito:** Validar detección de ataques en campos transaccionales.
 
 ---
 
@@ -837,7 +883,7 @@ LIMIT 5;
 
 ---
 
-## Troubleshooting
+## Solución de Problemas
 
 ### Problema: No puedo conectarme a la base de datos
 

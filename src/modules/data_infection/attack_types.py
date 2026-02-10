@@ -172,7 +172,11 @@ class OutlierAttack(BaseAttack):
         for col in columns:
             if col not in df.columns or df[col].dtype not in ['int64', 'float64']:
                 continue
-                
+            
+            # Convert column to float64 if it's int64 to avoid dtype warning
+            if df[col].dtype == 'int64':
+                df[col] = df[col].astype('float64')
+            
             max_val = df[col].max()
             # Outliers 100x más grandes
             outliers = max_val * np.random.uniform(100, 1000, num_rows)
@@ -220,6 +224,11 @@ class DataLeakageAttack(BaseAttack):
         for col in columns:
             if col not in df.columns:
                 continue
+            
+            # Convert column to object dtype if it's numeric to avoid dtype warnings
+            if df[col].dtype in ['int64', 'float64']:
+                df[col] = df[col].astype('object')
+            
             df.loc[affected_indices, col] = np.random.choice(sensitive_data, num_rows)
         
         logger.info(f"DataLeakage: Affected {num_rows} rows in columns {columns}")
@@ -310,8 +319,215 @@ class TimingAttack(BaseAttack):
         return df
 
 
+class SQLInjectionAttack(InjectionAttack):
+    """SQL Injection específico"""
+    pass
+
+
+class XSSAttack(BaseAttack):
+    """Cross-Site Scripting Attack"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        xss_payloads = [
+            '<script>alert("XSS")</script>',
+            '<img src=x onerror=alert(1)>',
+            '<svg/onload=alert(1)>',
+            'javascript:alert(1)',
+            '<iframe src="javascript:alert(1)">',
+            '<body onload=alert(1)>',
+            '"><script>alert(String.fromCharCode(88,83,83))</script>'
+        ]
+        
+        for col in columns:
+            if col not in df.columns:
+                continue
+            df.loc[affected_indices, col] = np.random.choice(xss_payloads, num_rows)
+        
+        logger.info(f"XSS: Affected {num_rows} rows in columns {columns}")
+        return df
+
+
+class CommandInjectionAttack(InjectionAttack):
+    """Command Injection Attack"""
+    pass
+
+
+class NoSQLInjectionAttack(InjectionAttack):
+    """NoSQL Injection Attack"""
+    pass
+
+
+class LDAPInjectionAttack(InjectionAttack):
+    """LDAP Injection Attack"""
+    pass
+
+
+class PathTraversalAttack(BaseAttack):
+    """Path Traversal Attack"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        traversal_payloads = [
+            '../../../etc/passwd',
+            '..\\..\\..\\windows\\system32\\config\\sam',
+            '....//....//....//etc/passwd',
+            '%2e%2e%2f%2e%2e%2f%2e%2e%2f',
+            '..;/..;/..;/',
+        ]
+        
+        for col in columns:
+            if col not in df.columns:
+                continue
+            df.loc[affected_indices, col] = np.random.choice(traversal_payloads, num_rows)
+        
+        logger.info(f"PathTraversal: Affected {num_rows} rows in columns {columns}")
+        return df
+
+
+class CreditCardExposureAttack(DataLeakageAttack):
+    """Credit Card Data Exposure"""
+    pass
+
+
+class SecretExposureAttack(DataLeakageAttack):
+    """API Keys and Secrets Exposure"""
+    pass
+
+
+class PrivateKeyExposureAttack(DataLeakageAttack):
+    """Private Keys Exposure"""
+    pass
+
+
+class JWTExposureAttack(DataLeakageAttack):
+    """JWT Token Exposure"""
+    pass
+
+
+class PasswordExposureAttack(DataLeakageAttack):
+    """Password Exposure"""
+    pass
+
+
+class SSRFAttack(BaseAttack):
+    """Server-Side Request Forgery Attack"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        ssrf_payloads = [
+            '169.254.169.254',  # AWS metadata
+            'http://169.254.169.254/latest/meta-data/',
+            'http://localhost:8080/',
+            'http://127.0.0.1:22/',
+            'file:///etc/passwd',
+            'http://metadata.google.internal/',
+        ]
+        
+        for col in columns:
+            if col not in df.columns:
+                continue
+            df.loc[affected_indices, col] = np.random.choice(ssrf_payloads, num_rows)
+        
+        logger.info(f"SSRF: Affected {num_rows} rows in columns {columns}")
+        return df
+
+
+class NegativeValueAttack(BaseAttack):
+    """Valores negativos en campos que deberían ser positivos"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        for col in columns:
+            if col not in df.columns or df[col].dtype not in ['int64', 'float64']:
+                continue
+            
+            # Convert to float if needed
+            if df[col].dtype == 'int64':
+                df[col] = df[col].astype('float64')
+            
+            # Valores negativos
+            negative_values = -abs(df[col].mean()) * np.random.uniform(0.1, 10, num_rows)
+            df.loc[affected_indices, col] = negative_values
+        
+        logger.info(f"NegativeValue: Affected {num_rows} rows in columns {columns}")
+        return df
+
+
+class InvalidUUIDAttack(InconsistencyAttack):
+    """Invalid UUID formats"""
+    pass
+
+
+class OrphanedReferenceAttack(BaseAttack):
+    """Referencias huérfanas (foreign keys inválidos)"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        fake_ids = [
+            'NONEXISTENT-UUID-1234',
+            '00000000-0000-0000-0000-000000000000',
+            'ORPHANED_REF',
+            'DELETED_REFERENCE',
+        ]
+        
+        for col in columns:
+            if col not in df.columns:
+                continue
+            df.loc[affected_indices, col] = np.random.choice(fake_ids, num_rows)
+        
+        logger.info(f"OrphanedReference: Affected {num_rows} rows in columns {columns}")
+        return df
+
+
+class InvalidEnumAttack(InconsistencyAttack):
+    """Invalid enum values"""
+    pass
+
+
+class TestValuesAttack(SchemaManipulationAttack):
+    """Test/Debug values in production"""
+    pass
+
+
+class CrossFieldViolationAttack(BaseAttack):
+    """Violaciones de reglas entre campos"""
+    
+    def apply(self, df: pd.DataFrame, columns: List[str], rate: float) -> pd.DataFrame:
+        df = df.copy()
+        num_rows = int(len(df) * rate)
+        affected_indices = np.random.choice(df.index, num_rows, replace=False)
+        
+        # Ejemplo: poner registration_date después de last_login
+        if 'registration_date' in df.columns and 'last_login' in df.columns:
+            try:
+                df.loc[affected_indices, 'registration_date'] = pd.to_datetime('2025-01-01')
+                df.loc[affected_indices, 'last_login'] = pd.to_datetime('2020-01-01')
+            except:
+                pass
+        
+        logger.info(f"CrossFieldViolation: Affected {num_rows} rows")
+        return df
+
+
 # Mapeo de nombres a clases
 ATTACK_REGISTRY = {
+    # Core attacks
     'data_poisoning': DataPoisoningAttack,
     'schema_manipulation': SchemaManipulationAttack,
     'injection': InjectionAttack,
@@ -321,5 +537,41 @@ ATTACK_REGISTRY = {
     'data_leakage': DataLeakageAttack,
     'inconsistency': InconsistencyAttack,
     'format_corruption': FormatCorruptionAttack,
-    'timing': TimingAttack
+    'timing': TimingAttack,
+    
+    # Injection variants
+    'sql_injection': SQLInjectionAttack,
+    'xss': XSSAttack,
+    'nosql_injection': NoSQLInjectionAttack,
+    'command_injection': CommandInjectionAttack,
+    'ldap_injection': LDAPInjectionAttack,
+    'path_traversal': PathTraversalAttack,
+    
+    # Data leakage variants
+    'credit_card_exposure': CreditCardExposureAttack,
+    'secret_exposure': SecretExposureAttack,
+    'private_key_exposure': PrivateKeyExposureAttack,
+    'jwt_exposure': JWTExposureAttack,
+    'password_exposure': PasswordExposureAttack,
+    
+    # SSRF attacks
+    'ssrf_private_ip': SSRFAttack,
+    'ssrf_url': SSRFAttack,
+    
+    # Value attacks
+    'negative_amounts': NegativeValueAttack,
+    'test_values': TestValuesAttack,
+    
+    # Reference attacks
+    'invalid_uuid': InvalidUUIDAttack,
+    'orphaned_references': OrphanedReferenceAttack,
+    'invalid_enum': InvalidEnumAttack,
+    
+    # Cross-field attacks
+    'cross_field_violation': CrossFieldViolationAttack,
+    'temporal_anomaly': TimingAttack,
+    
+    # Format attacks (aliases)
+    'format_inconsistency': InconsistencyAttack,
+    'encoding_corruption': FormatCorruptionAttack,
 }

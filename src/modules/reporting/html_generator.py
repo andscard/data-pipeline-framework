@@ -1,32 +1,19 @@
 """
-HTMLReportGenerator - Generador de reportes HTML profesionales.
-
-Combina métricas de Monitoring (salud operativa) y Auditing (trazabilidad)
-en un reporte visual estilo dashboard con CSS embebido.
+Generador de reportes HTML profesional - Versión 2.0
+Diseño empresarial limpio y elegante
 """
 
-from datetime import datetime
-from typing import Dict, Any, List, Optional
-from pathlib import Path
 import logging
+import re
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
 
 class HTMLReportGenerator:
-    """
-    Generador de reportes HTML profesionales para ejecuciones de pipeline.
-    
-    El reporte incluye:
-    1. Executive Summary: Panel de salud general (verde/amarillo/rojo)
-    2. Stage Health: Barras de progreso por etapa
-    3. Quality Metrics: Métricas de validación con visualización
-    4. Audit Trail: Tabla detallada de trazabilidad
-    """
-    
-    def __init__(self):
-        """Inicializar generador"""
-        pass
+    """Generador de reportes HTML con diseño profesional empresarial"""
     
     def generate_report(
         self,
@@ -34,18 +21,7 @@ class HTMLReportGenerator:
         audit_data: Optional[Dict[str, Any]] = None,
         output_path: Optional[Path] = None
     ) -> Path:
-        """
-        Generar reporte HTML completo.
-        
-        Args:
-            monitoring_summary: Resumen de MonitoringCollector
-            audit_data: Datos adicionales de AuditManager (opcional)
-            output_path: Ruta donde guardar el reporte
-        
-        Returns:
-            Path al archivo HTML generado
-        """
-        # Determinar ruta de salida
+        """Generar reporte HTML profesional"""
         if not output_path:
             execution_id = monitoring_summary.get('execution_id', 'unknown')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -53,62 +29,143 @@ class HTMLReportGenerator:
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Generar HTML
         html_content = self._build_html(monitoring_summary, audit_data)
         
-        # Guardar archivo
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
         logger.info(f"✓ Reporte HTML generado: {output_path}")
         return output_path
     
-    def _build_html(
-        self,
-        monitoring: Dict[str, Any],
-        audit: Optional[Dict[str, Any]]
-    ) -> str:
-        """Construir HTML completo del reporte"""
+    def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]]) -> str:
+        """Construir HTML completo"""
+        execution_id = monitoring.get('execution_id', 'N/A')[:8]
+        pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
+        start_time = monitoring.get('start_time', 'N/A')
         
-        css = self._generate_css()
-        header = self._generate_header(monitoring)
-        executive_summary = self._generate_executive_summary(monitoring)
-        security_issues = self._generate_security_issues(monitoring)  # NEW: Security section
-        stage_health = self._generate_stage_health(monitoring)
-        quality_metrics = self._generate_quality_metrics(monitoring, audit)  # Pass audit data
-        issues_section = self._generate_issues_section(monitoring)
-        audit_trail = self._generate_audit_trail(monitoring, audit)
+        # Extraer métricas
+        health_status = monitoring.get('health_status', 'unknown')
+        duration = monitoring.get('total_duration', 0)
+        records = monitoring.get('total_records_processed', 0)
+        stages = monitoring.get('stages', {})
         
-        html = f"""<!DOCTYPE html>
+        validation_stage = stages.get('VALIDATION', {})
+        quality_score = validation_stage.get('quality_score', 0)
+        validations_passed = validation_stage.get('validations_passed', 0)
+        validations_failed = validation_stage.get('validations_failed', 0)
+        
+        # Status badge
+        status_badge = self._get_status_badge(health_status, quality_score)
+        
+        # Validation results
+        validation_results = []
+        if audit and 'validation_results' in audit:
+            validation_results = audit['validation_results']
+        
+        # Agrupar por suite
+        suites_summary = self._group_by_suite(validation_results)
+        suites_html = self._render_suites(suites_summary)
+        
+        # Tabla de fallos
+        failures_html = self._render_failures_table(validation_results)
+        
+        # Stage summary
+        stages_html = self._render_stages(stages)
+        
+        return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline Execution Report - {monitoring.get('execution_id', 'N/A')[:8]}</title>
+    <title>Pipeline Report - {execution_id}</title>
     <style>
-{css}
+{self._get_professional_css()}
     </style>
 </head>
 <body>
     <div class="container">
-{header}
-{executive_summary}
-{security_issues}
-{stage_health}
-{quality_metrics}
-{issues_section}
-{audit_trail}
-        <footer>
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Data Pipeline Execution Report</h1>
+                <div class="header-meta">
+                    <span><strong>Pipeline:</strong> {pipeline_name}</span>
+                    <span><strong>Execution ID:</strong> {execution_id}</span>
+                    <span><strong>Date:</strong> {start_time}</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Executive Summary -->
+        <section class="summary">
+            <h2>Executive Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="card-label">Status</div>
+                    <div class="card-value">{status_badge}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Duration</div>
+                    <div class="card-value">{duration:.2f}s</div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Records Ingested</div>
+                    <div class="card-value">{records:,}</div>
+                    <div style="font-size: 0.75em; color: #6c757d; margin-top: 5px;">Total unique records loaded</div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Quality Score</div>
+                    <div class="card-value {self._get_quality_class(quality_score)}">{quality_score:.1f}%</div>
+                </div>
+            </div>
+            
+            <!-- Data Flow Summary -->
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    {self._render_data_flow_cards(stages)}
+                </div>
+            </div>
+        </section>
+        
+        <!-- Validation Results -->
+        <section class="validation-section">
+            <h2>Validation Results</h2>
+            <div class="validation-overview">
+                <div class="validation-stat success">
+                    <span class="stat-number">{validations_passed}</span>
+                    <span class="stat-label">Passed</span>
+                </div>
+                <div class="validation-stat failed">
+                    <span class="stat-number">{validations_failed}</span>
+                    <span class="stat-label">Failed</span>
+                </div>
+                <div class="validation-stat total">
+                    <span class="stat-number">{validations_passed + validations_failed}</span>
+                    <span class="stat-label">Total</span>
+                </div>
+            </div>
+            
+            {suites_html}
+            {failures_html}
+        </section>
+        
+        <!-- Pipeline Stages -->
+        <section class="stages-section">
+            <h2>Pipeline Stages</h2>
+            {stages_html}
+        </section>
+        
+        <!-- Footer -->
+        <footer class="footer">
             <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data Pipeline Framework v2.0</p>
         </footer>
     </div>
 </body>
 </html>"""
-        
-        return html
     
-    def _generate_css(self) -> str:
-        """Generar CSS embebido profesional y empresarial"""
+    def _get_professional_css(self) -> str:
+        """CSS profesional y empresarial"""
         return """
         * {
             margin: 0;
@@ -117,533 +174,212 @@ class HTMLReportGenerator:
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f5f7fa;
-            padding: 30px;
-            color: #2c3e50;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
             line-height: 1.6;
         }
         
         .container {
             max-width: 1400px;
-            margin: 0 auto;
+            margin: 40px auto;
             background: white;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
         }
         
         /* Header */
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #1a1a2e;
             color: white;
-            padding: 30px;
-            text-align: center;
+            padding: 30px 40px;
+            border-bottom: 3px solid #0f3460;
         }
         
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-size: 1.8em;
+            font-weight: 600;
+            margin-bottom: 15px;
         }
         
-        .header .execution-id {
-            font-size: 1.1em;
-            opacity: 0.9;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .header .timestamp {
-            margin-top: 5px;
+        .header-meta {
+            display: flex;
+            gap: 30px;
             font-size: 0.9em;
-            opacity: 0.8;
+            color: #cbd5e0;
         }
         
-        /* Section */
-        .section {
-            padding: 30px;
-            border-bottom: 1px solid #e0e0e0;
+        /* Sections */
+        section {
+            padding: 40px;
+            border-bottom: 1px solid #e9ecef;
         }
         
-        .section:last-of-type {
+        section:last-of-type {
             border-bottom: none;
         }
         
-        .section-title {
-            font-size: 1.8em;
-            margin-bottom: 20px;
-            color: #667eea;
-            display: flex;
-            align-items: center;
+        section h2 {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #0f3460;
         }
         
-        .section-title::before {
-            content: '';
-            width: 4px;
-            height: 30px;
-            background: #667eea;
-            margin-right: 15px;
-            border-radius: 2px;
-        }
-        
-        /* Executive Summary */
-        .summary-cards {
+        /* Summary Grid */
+        .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
-            margin-top: 20px;
         }
         
-        .card {
-            background: #f8f9fa;
+        .summary-card {
             padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        
-        .card-title {
-            font-size: 0.9em;
-            color: #666;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .card-value {
-            font-size: 2.5em;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        .card-subtitle {
-            font-size: 0.9em;
-            color: #999;
-        }
-        
-        /* Status badges */
-        .status-badge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 1.1em;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .status-healthy {
-            background: #4caf50;
-            color: white;
-        }
-        
-        .status-warning {
-            background: #ff9800;
-            color: white;
-        }
-        
-        .status-critical {
-            background: #f44336;
-            color: white;
-        }
-        
-        .status-failed {
-            background: #d32f2f;
-            color: white;
-        }
-        
-        /* Stage Health */
-        .stage-list {
-            margin-top: 20px;
-        }
-        
-        .stage-item {
             background: #f8f9fa;
-            padding: 20px;
-            margin-bottom: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .stage-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .stage-name {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        .stage-status {
-            padding: 5px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-        
-        .stage-status.completed {
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        
-        .stage-status.failed {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .stage-metrics {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .metric {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .metric-label {
-            font-size: 0.85em;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        
-        .metric-value {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        /* Progress bar */
-        .progress-bar-container {
-            background: #e0e0e0;
-            height: 30px;
-            border-radius: 15px;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        .progress-bar {
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 0.9em;
-            transition: width 0.3s ease;
-        }
-        
-        .progress-bar.high {
-            background: linear-gradient(90deg, #4caf50, #66bb6a);
-        }
-        
-        .progress-bar.medium {
-            background: linear-gradient(90deg, #ff9800, #ffa726);
-        }
-        
-        .progress-bar.low {
-            background: linear-gradient(90deg, #f44336, #ef5350);
-        }
-        
-        /* Quality Metrics */
-        .quality-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        
-        .quality-card {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        .quality-title {
-            font-size: 1.1em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #667eea;
-        }
-        
-        .quality-score {
-            font-size: 3em;
-            font-weight: bold;
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        .score-excellent {
-            color: #4caf50;
-        }
-        
-        .score-good {
-            color: #8bc34a;
-        }
-        
-        .score-fair {
-            color: #ff9800;
-        }
-        
-        .score-poor {
-            color: #f44336;
-        }
-        
-        /* Issues */
-        .issue-list {
-            margin-top: 15px;
-        }
-        
-        .issue-item {
-            background: #fff3cd;
-            border-left: 4px solid #ff9800;
-            padding: 15px;
-            margin-bottom: 10px;
+            border-left: 4px solid #0f3460;
             border-radius: 4px;
         }
         
-        .issue-item.error {
-            background: #f8d7da;
-            border-left-color: #f44336;
+        .card-label {
+            font-size: 0.85em;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
         }
         
-        .issue-icon {
+        .card-value {
+            font-size: 2em;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        
+        /* Status Badges */
+        .status-badge {
             display: inline-block;
-            margin-right: 10px;
-            font-weight: bold;
-        }
-        
-        /* Audit Trail */
-        .audit-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .audit-table thead {
-            background: #667eea;
-            color: white;
-        }
-        
-        .audit-table th,
-        .audit-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .audit-table th {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.75em;
             font-weight: 600;
             text-transform: uppercase;
-            font-size: 0.85em;
-            letter-spacing: 1px;
         }
         
-        .audit-table tbody tr:hover {
-            background: #f5f5f5;
-        }
-        
-        .audit-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        
-        /* Footer */
-        footer {
-            background: #f8f9fa;
-            padding: 20px;
-            text-align: center;
-            color: #666;
-            font-size: 0.9em;
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .section {
-            animation: fadeIn 0.5s ease;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .summary-cards {
-                grid-template-columns: 1fr;
-            }
-            
-            .stage-metrics {
-                grid-template-columns: 1fr;
-            }
-            
-            .quality-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* Quality Metrics Detailed Styles */
-        .quality-summary {
-            margin: 20px 0;
-        }
-        
-        .quality-score-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            color: white;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        
-        .quality-title {
-            font-size: 1.1em;
-            font-weight: 500;
-            opacity: 0.9;
-            margin-bottom: 10px;
-        }
-        
-        .quality-score-large {
-            font-size: 4em;
-            font-weight: bold;
-            margin: 10px 0;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-        
-        .quality-subtitle {
-            font-size: 1em;
-            opacity: 0.8;
-        }
-        
-        .suites-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }
-        
-        .suite-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        .suite-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .suite-icon {
-            font-size: 1.5em;
-        }
-        
-        .suite-name {
-            flex: 1;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        .suite-status {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-        
-        .suite-status.success {
+        .status-healthy {
             background: #d4edda;
             color: #155724;
         }
         
-        .suite-status.warning {
+        .status-warning {
             background: #fff3cd;
             color: #856404;
         }
         
-        .suite-status.error {
+        .status-critical {
             background: #f8d7da;
             color: #721c24;
         }
         
-        .suite-metrics {
+        .quality-excellent { color: #28a745; }
+        .quality-good { color: #5cb85c; }
+        .quality-warning { color: #ffc107; }
+        .quality-poor { color: #dc3545; }
+        
+        /* Validation Overview */
+        .validation-overview {
             display: flex;
-            gap: 20px;
-            margin: 15px 0;
+            gap: 40px;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 4px;
         }
         
-        .suite-metric {
-            flex: 1;
+        .validation-stat {
             text-align: center;
         }
         
-        .suite-metric .metric-value {
-            font-size: 2em;
-            font-weight: bold;
-            color: #333;
+        .stat-number {
+            display: block;
+            font-size: 2.5em;
+            font-weight: 700;
         }
         
-        .suite-metric .metric-value.success {
-            color: #4caf50;
-        }
-        
-        .suite-metric .metric-value.error {
-            color: #f44336;
-        }
-        
-        .suite-metric .metric-label {
-            font-size: 0.85em;
-            color: #666;
+        .stat-label {
+            display: block;
+            font-size: 0.9em;
+            color: #6c757d;
             margin-top: 5px;
         }
         
-        .failures-section {
-            margin-top: 40px;
-            padding: 20px;
-            background: #fff5f5;
-            border-radius: 8px;
-            border: 2px solid #ffcdd2;
+        .validation-stat.success .stat-number {
+            color: #28a745;
         }
         
-        .failure-group {
-            margin-bottom: 30px;
+        .validation-stat.failed .stat-number {
+            color: #dc3545;
         }
         
+        .validation-stat.total .stat-number {
+            color: #0f3460;
+        }
+        
+        /* Suites Table */
+        .suites-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            background: white;
+            border: 1px solid #dee2e6;
+        }
+        
+        .suites-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            font-size: 0.9em;
+        }
+        
+        .suites-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .suites-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .suites-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .suite-name {
+            font-weight: 500;
+            color: #1a1a2e;
+        }
+        
+        .suite-type {
+            display: inline-block;
+            padding: 3px 10px;
+            background: #e9ecef;
+            border-radius: 3px;
+            font-size: 0.8em;
+            color: #495057;
+        }
+        
+        /* Failures Table */
         .failures-table {
             width: 100%;
             border-collapse: collapse;
-            background: white;
-            margin-top: 15px;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 30px;
+            border: 1px solid #dee2e6;
         }
         
         .failures-table thead {
-            background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+            background: #1a1a2e;
             color: white;
         }
         
@@ -656,356 +392,142 @@ class HTMLReportGenerator:
         
         .failures-table td {
             padding: 12px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #dee2e6;
         }
         
-        .failure-row.critical {
-            background: #ffebee;
-        }
-        
-        .failure-row.high {
-            background: #fff3e0;
-        }
-        
-        .failure-row.medium {
-            background: #fffde7;
+        .failures-table tr:hover {
+            background: #f8f9fa;
         }
         
         .failures-table code {
-            background: #f5f5f5;
-            padding: 4px 8px;
-            border-radius: 4px;
+            background: #f8f9fa;
+            padding: 3px 8px;
+            border-radius: 3px;
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
+            color: #495057;
         }
         
-        .exp-type {
-            color: #1976d2;
+        .severity-critical {
+            background: #ffe5e5 !important;
         }
         
-        .column-name {
-            color: #6a1b9a;
+        .severity-high {
+            background: #fff5e5 !important;
         }
         
-        .pattern {
-            color: #d84315;
-            max-width: 300px;
+        .severity-medium {
+            background: #ffffeb !important;
+        }
+        
+        .severity-indicator {
             display: inline-block;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
         }
         
-        .count-badge {
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 4px 10px;
-            border-radius: 12px;
+        .severity-indicator.critical {
+            background: #dc3545;
+        }
+        
+        .severity-indicator.high {
+            background: #fd7e14;
+        }
+        
+        .severity-indicator.medium {
+            background: #ffc107;
+        }
+        
+        /* Stages Table */
+        .stages-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stages-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
             font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
             font-size: 0.9em;
         }
         
-        .percent-badge {
-            padding: 6px 12px;
-            border-radius: 12px;
-            font-weight: bold;
+        .stages-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .stages-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .stage-name {
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        
+        /* Footer */
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            text-align: center;
+            color: #6c757d;
             font-size: 0.9em;
+            border-top: 1px solid #dee2e6;
         }
         
-        .percent-badge.critical {
-            background: #d32f2f;
-            color: white;
-        }
-        
-        .percent-badge.high {
-            background: #ff6f00;
-            color: white;
-        }
-        
-        .percent-badge.medium {
-            background: #fdd835;
-            color: #333;
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+            }
+            
+            section {
+                padding: 20px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header-meta {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
         }
 """
     
-    def _generate_header(self, monitoring: Dict[str, Any]) -> str:
-        """Generar header del reporte"""
-        execution_id = monitoring.get('execution_id', 'N/A')
-        pipeline_name = monitoring.get('pipeline_name', 'Unknown Pipeline')
-        start_time = monitoring.get('start_time', 'N/A')
-        
-        return f"""
-        <div class="header">
-            <h1>🎯 Pipeline Execution Report</h1>
-            <div class="execution-id">Pipeline: {pipeline_name}</div>
-            <div class="execution-id">Execution ID: {execution_id}</div>
-            <div class="timestamp">Started: {start_time}</div>
-        </div>
-"""
-    
-    def _generate_executive_summary(self, monitoring: Dict[str, Any]) -> str:
-        """Generar resumen ejecutivo con métricas principales"""
-        health_status = monitoring.get('health_status', 'unknown')
-        duration = monitoring.get('total_duration', 0)
-        records = monitoring.get('total_records_processed', 0)
-        quality = monitoring.get('overall_quality_score')
-        
-        # Determinar clase de status
-        status_class = {
-            'healthy': 'status-healthy',
-            'warning': 'status-warning',
-            'critical': 'status-critical',
-            'failed': 'status-failed'
-        }.get(health_status, 'status-warning')
-        
-        # Ícono de status
-        status_icon = {
-            'healthy': '✓',
-            'warning': '⚠',
-            'critical': '⚠',
-            'failed': '✗'
-        }.get(health_status, '?')
-        
-        quality_html = ""
-        if quality is not None:
-            quality_class = self._get_score_class(quality)
-            quality_html = f"""
-                <div class="card">
-                    <div class="card-title">Overall Quality</div>
-                    <div class="card-value {quality_class}">{quality:.1f}%</div>
-                    <div class="card-subtitle">Validation Score</div>
-                </div>
-"""
-        
-        return f"""
-        <div class="section">
-            <h2 class="section-title">📊 Executive Summary</h2>
-            <div class="summary-cards">
-                <div class="card">
-                    <div class="card-title">Status</div>
-                    <div class="card-value">
-                        <span class="status-badge {status_class}">{status_icon} {health_status.upper()}</span>
-                    </div>
-                    <div class="card-subtitle">Pipeline Health</div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">Duration</div>
-                    <div class="card-value">{duration:.1f}s</div>
-                    <div class="card-subtitle">Total Execution Time</div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">Records</div>
-                    <div class="card-value">{records:,}</div>
-                    <div class="card-subtitle">Processed Successfully</div>
-                </div>
-                {quality_html}
-            </div>
-        </div>
-"""
-    
-    def _generate_stage_health(self, monitoring: Dict[str, Any]) -> str:
-        """Generar sección de salud por etapa"""
-        stages = monitoring.get('stages', {})
-        
-        if not stages:
-            return ""
-        
-        stages_html = []
-        for stage_name, stage_data in stages.items():
-            status = stage_data.get('status', 'unknown')
-            duration = stage_data.get('duration_seconds', 0)
-            records_in = stage_data.get('records_input', 0)
-            records_out = stage_data.get('records_output', 0)
-            success_rate = stage_data.get('success_rate', 100)
-            errors = stage_data.get('errors', [])
-            warnings = stage_data.get('warnings', [])
-            
-            # Status badge
-            status_class = 'completed' if status == 'completed' else 'failed'
-            status_icon = '✓' if status == 'completed' else '✗'
-            
-            # Progress bar
-            progress_class = self._get_progress_class(success_rate)
-            
-            # Quality metrics (si es VALIDATION)
-            quality_html = ""
-            if stage_data.get('quality_score') is not None:
-                quality_score = stage_data.get('quality_score', 0)
-                validations_passed = stage_data.get('validations_passed', 0)
-                validations_failed = stage_data.get('validations_failed', 0)
-                quality_html = f"""
-                    <div class="metric">
-                        <div class="metric-label">Quality Score</div>
-                        <div class="metric-value">{quality_score:.1f}%</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Validations</div>
-                        <div class="metric-value">{validations_passed}/{validations_passed + validations_failed}</div>
-                    </div>
-"""
-            
-            # Errors/warnings
-            issues_html = ""
-            if errors:
-                issues_html += '<div class="issue-list">'
-                for error in errors[:3]:  # Limitar a 3
-                    issues_html += f'<div class="issue-item error"><span class="issue-icon">✗</span>{error}</div>'
-                issues_html += '</div>'
-            
-            if warnings:
-                issues_html += '<div class="issue-list">'
-                for warning in warnings[:3]:  # Limitar a 3
-                    issues_html += f'<div class="issue-item"><span class="issue-icon">⚠</span>{warning}</div>'
-                issues_html += '</div>'
-            
-            stage_html = f"""
-                <div class="stage-item">
-                    <div class="stage-header">
-                        <div class="stage-name">{stage_name}</div>
-                        <div class="stage-status {status_class}">{status_icon} {status}</div>
-                    </div>
-                    <div class="stage-metrics">
-                        <div class="metric">
-                            <div class="metric-label">Duration</div>
-                            <div class="metric-value">{duration:.2f}s</div>
-                        </div>
-                        <div class="metric">
-                            <div class="metric-label">Records In</div>
-                            <div class="metric-value">{records_in:,}</div>
-                        </div>
-                        <div class="metric">
-                            <div class="metric-label">Records Out</div>
-                            <div class="metric-value">{records_out:,}</div>
-                        </div>
-                        {quality_html}
-                    </div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar {progress_class}" style="width: {success_rate}%">
-                            {success_rate:.1f}% Success Rate
-                        </div>
-                    </div>
-                    {issues_html}
-                </div>
-"""
-            stages_html.append(stage_html)
-        
-        return f"""
-        <div class="section">
-            <h2 class="section-title">🔍 Stage Health</h2>
-            <div class="stage-list">
-                {''.join(stages_html)}
-            </div>
-        </div>
-"""
-    
-    def _generate_security_issues(self, monitoring: Dict[str, Any]) -> str:
-        """Generar sección destacada de Security Issues"""
-        # Buscar etapa de validación
-        stages = monitoring.get('stages', {})
-        validation_stage = stages.get('VALIDATION')
-        
-        if not validation_stage:
-            return ""
-        
-        # Obtener métricas de calidad
-        quality_score = validation_stage.get('quality_score', 100)
-        validations_passed = validation_stage.get('validations_passed', 0)
-        validations_failed = validation_stage.get('validations_failed', 0)
-        total_validations = validations_passed + validations_failed
-        
-        # Si no hay validaciones fallidas o quality > 80%, no mostrar sección
-        if validations_failed == 0 or quality_score > 80:
-            return ""
-        
-        # Calcular severidad
-        failure_rate = (validations_failed / total_validations * 100) if total_validations > 0 else 0
-        
-        if failure_rate > 50:
-            severity_class = 'critical'
-            severity_icon = '🔴'
-            severity_label = 'CRITICAL'
-            border_color = '#ff0000'
-        elif failure_rate > 25:
-            severity_class = 'high'
-            severity_icon = '🟠'
-            severity_label = 'HIGH'
-            border_color = '#ff6600'
+    def _get_status_badge(self, status: str, quality: float) -> str:
+        """Generar badge de status"""
+        if quality < 50:
+            return '<span class="status-badge status-critical">CRITICAL</span>'
+        elif quality < 80:
+            return '<span class="status-badge status-warning">WARNING</span>'
         else:
-            severity_class = 'medium'
-            severity_icon = '🟡'
-            severity_label = 'MEDIUM'
-            border_color = '#ffaa00'
-        
-        return f"""
-        <div class="section" style="border-left: 5px solid {border_color}; background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <h2 class="section-title">{severity_icon} Security Issues Detected</h2>
-                <span style="padding: 8px 16px; background: {border_color}; color: white; border-radius: 20px; font-weight: bold; font-size: 0.9em;">
-                    {severity_label}
-                </span>
-            </div>
-            
-            <div style="display: flex; gap: 30px; margin: 20px 0; padding: 20px; background: rgba(255, 0, 0, 0.05); border-radius: 8px;">
-                <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 3em; font-weight: bold; color: #ff4444;">{validations_failed}</div>
-                    <div style="color: #666; margin-top: 5px;">Vulnerabilities</div>
-                </div>
-                <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 3em; font-weight: bold; color: #ff4444;">{failure_rate:.1f}%</div>
-                    <div style="color: #666; margin-top: 5px;">Failure Rate</div>
-                </div>
-                <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 3em; font-weight: bold; color: #ff4444;">{total_validations}</div>
-                    <div style="color: #666; margin-top: 5px;">Checks Performed</div>
-                </div>
-            </div>
-            
-            <div style="padding: 20px; background: white; border-radius: 8px; border: 1px solid #ffcccc;">
-                <h3 style="color: #cc0000; margin-top: 0;">⚠️ Security Validation Failed</h3>
-                <p>The data pipeline detected <strong>{validations_failed} security issues</strong> during validation. Quality score: <strong>{quality_score:.1f}%</strong></p>
-                
-                <p><strong>Potential Threats Detected:</strong></p>
-                <ul style="columns: 2; column-gap: 30px;">
-                    <li>SQL Injection patterns</li>
-                    <li>NoSQL Injection operators</li>
-                    <li>Cross-Site Scripting (XSS)</li>
-                    <li>Command Injection attempts</li>
-                    <li>LDAP Injection patterns</li>
-                    <li>XML Injection entities</li>
-                    <li>Path Traversal sequences</li>
-                    <li>Sensitive Data Leakage</li>
-                </ul>
-                
-                <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
-                    <strong>🔒 Action Required:</strong> Review validation logs and audit trail for detailed vulnerability information. Check the data source for potential security breaches.
-                </div>
-            </div>
-        </div>
-"""
+            return '<span class="status-badge status-healthy">HEALTHY</span>'
     
-    def _generate_quality_metrics(self, monitoring: Dict[str, Any], audit_data: Optional[Dict[str, Any]] = None) -> str:
-        """Generar sección DETALLADA de métricas de calidad"""
-        stages = monitoring.get('stages', {})
-        validation_stage = stages.get('VALIDATION')
-        
-        if not validation_stage or validation_stage.get('quality_score') is None:
-            return ""
-        
-        quality_score = validation_stage.get('quality_score', 0)
-        validations_passed = validation_stage.get('validations_passed', 0)
-        validations_failed = validation_stage.get('validations_failed', 0)
-        total_validations = validations_passed + validations_failed
-        
-        score_class = self._get_score_class(quality_score)
-        
-        # Obtener validation_results de audit_data
-        validation_results = []
-        if audit_data and 'validation_results' in audit_data:
-            validation_results = audit_data['validation_results']
-        
-        # Agrupar por suite
+    def _get_quality_class(self, score: float) -> str:
+        """Clase CSS para quality score"""
+        if score >= 90:
+            return 'quality-excellent'
+        elif score >= 70:
+            return 'quality-good'
+        elif score >= 50:
+            return 'quality-warning'
+        else:
+            return 'quality-poor'
+    
+    def _group_by_suite(self, validation_results: list) -> dict:
+        """Agrupar validation results por suite"""
         suites = {}
         for result in validation_results:
             suite_name = result['rule_name']
@@ -1015,247 +537,252 @@ class HTMLReportGenerator:
                     'type': result['rule_type'],
                     'passed': 0,
                     'failed': 0,
-                    'failed_details': []
+                    'total': 0,
+                    'failures': []
                 }
             
             if result['passed']:
                 suites[suite_name]['passed'] += 1
             else:
-                suites[suite_name]['failed'] += result['failed_count']
-                suites[suite_name]['failed_details'].extend(result['failure_details'])
+                # Contar 1 expectativa fallida, no el número de registros afectados
+                suites[suite_name]['failed'] += 1
+                suites[suite_name]['failures'].extend(result.get('failure_details', []))
+            
+            suites[suite_name]['total'] = suites[suite_name]['passed'] + suites[suite_name]['failed']
         
-        # Generar tabla de suites
-        suites_html = ""
-        for suite_name, suite_data in suites.items():
-            total = suite_data['passed'] + suite_data['failed']
-            success_rate = (suite_data['passed'] / total * 100) if total > 0 else 0
-            
-            status_icon = '✅' if success_rate == 100 else '⚠️' if success_rate > 50 else '❌'
-            status_class = 'success' if success_rate == 100 else 'warning' if success_rate > 50 else 'error'
-            
-            # Determinar tipo de suite
-            if 'security' in suite_name.lower():
-                suite_icon = '🔒'
-                suite_color = '#ff6b6b'
-            elif 'quality' in suite_name.lower() or 'basic' in suite_name.lower():
-                suite_icon = '📊'
-                suite_color = '#4dabf7'
-            elif 'anomaly' in suite_name.lower():
-                suite_icon = '🔍'
-                suite_color = '#ffa94d'
-            elif 'business' in suite_name.lower():
-                suite_icon = '💼'
-                suite_color = '#69db7c'
-            else:
-                suite_icon = '📋'
-                suite_color = '#868e96'
-            
-            suites_html += f"""
-            <div class="suite-card" style="border-left: 4px solid {suite_color};">
-                <div class="suite-header">
-                    <span class="suite-icon">{suite_icon}</span>
-                    <span class="suite-name">{suite_name}</span>
-                    <span class="suite-status {status_class}">{status_icon} {success_rate:.1f}%</span>
-                </div>
-                <div class="suite-metrics">
-                    <div class="suite-metric">
-                        <div class="metric-value success">{suite_data['passed']}</div>
-                        <div class="metric-label">Passed</div>
-                    </div>
-                    <div class="suite-metric">
-                        <div class="metric-value error">{suite_data['failed']}</div>
-                        <div class="metric-label">Failed</div>
-                    </div>
-                    <div class="suite-metric">
-                        <div class="metric-value">{total}</div>
-                        <div class="metric-label">Total</div>
-                    </div>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar {self._get_progress_class(success_rate)}" style="width: {success_rate}%">
-                        {success_rate:.1f}%
-                    </div>
-                </div>
-            </div>
-"""
-        
-        # Generar tabla de fallos detallados
-        failures_html = ""
-        if validation_results:
-            has_failures = any(not r['passed'] for r in validation_results)
-            if has_failures:
-                failures_html = '<div class="failures-section">'
-                failures_html += '<h3 style="margin-bottom: 20px; color: #d32f2f; font-size: 1.3em;">📋 Detailed Validation Failures</h3>'
-                
-                for result in validation_results:
-                    if not result['passed'] and result['failure_details']:
-                        suite_name = result['rule_name']
-                        failures_html += f'<div class="failure-group"><h4 style="color: #c62828; margin: 20px 0 10px 0;">❌ {suite_name}</h4>'
-                        failures_html += '<table class="failures-table">'
-                        failures_html += '''
-                        <thead>
-                            <tr>
-                                <th>Expectation Type</th>
-                                <th>Column</th>
-                                <th>Pattern/Rule</th>
-                                <th>Unexpected Count</th>
-                                <th>Unexpected %</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-'''
-                        
-                        for detail in result['failure_details']:
-                            exp_type = detail.get('expectation_type', 'N/A')
-                            kwargs = detail.get('kwargs', {})
-                            column = kwargs.get('column', 'N/A')
-                            
-                            # Extraer regex/pattern
-                            pattern = kwargs.get('regex', kwargs.get('value_set', kwargs.get('min_value', 'N/A')))
-                            if isinstance(pattern, str) and len(pattern) > 50:
-                                pattern = pattern[:47] + '...'
-                            
-                            unexpected_count = detail.get('unexpected_count', 0) or 0
-                            unexpected_percent = detail.get('unexpected_percent') or 0.0
-                            element_count = detail.get('element_count', 0) or 0
-                            
-                            # Asegurar que son números
-                            try:
-                                unexpected_count = int(unexpected_count)
-                                element_count = int(element_count)
-                                unexpected_percent = float(unexpected_percent)
-                            except (ValueError, TypeError):
-                                unexpected_count = 0
-                                element_count = 0
-                                unexpected_percent = 0.0
-                            
-                            # Color de severidad
-                            severity_class = 'critical' if unexpected_percent > 10 else 'high' if unexpected_percent > 5 else 'medium'
-                            
-                            # Simplificar nombre de expectation
-                            simple_type = exp_type.replace('expect_column_values_to_', '').replace('expect_column_', '').replace('_', ' ').title()
-                            
-                            failures_html += f'''
-                            <tr class="failure-row {severity_class}">
-                                <td><code class="exp-type">{simple_type}</code></td>
-                                <td><strong class="column-name">{column}</strong></td>
-                                <td><code class="pattern">{pattern}</code></td>
-                                <td><span class="count-badge">{unexpected_count:,} / {element_count:,}</span></td>
-                                <td><span class="percent-badge {severity_class}">{unexpected_percent:.2f}%</span></td>
-                            </tr>
-'''
-                        
-                        failures_html += '</tbody></table></div>'
-                
-                failures_html += '</div>'
-        
-        return f"""
-        <div class="section">
-            <h2 class="section-title">📈 Quality Metrics</h2>
-            
-            <div class="quality-summary">
-                <div class="quality-score-card">
-                    <div class="quality-title">Overall Quality Score</div>
-                    <div class="quality-score-large {score_class}">{quality_score:.1f}%</div>
-                    <div class="quality-subtitle">{validations_passed} passed • {validations_failed} failed • {total_validations} total</div>
-                    <div class="progress-bar-container" style="margin-top: 15px;">
-                        <div class="progress-bar {self._get_progress_class(quality_score)}" style="width: {quality_score}%">
-                            {quality_score:.1f}%
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <h3 style="margin: 30px 0 20px 0; color: #495057; font-size: 1.4em;">📦 Validation Suites</h3>
-            <div class="suites-grid">
-                {suites_html}
-            </div>
-            
-            {failures_html}
-        </div>
-"""
+        return suites
     
-    def _generate_issues_section(self, monitoring: Dict[str, Any]) -> str:
-        """Generar sección de problemas detectados"""
-        stages = monitoring.get('stages', {})
-        
-        all_errors = []
-        all_warnings = []
-        
-        for stage_name, stage_data in stages.items():
-            for error in stage_data.get('errors', []):
-                all_errors.append((stage_name, error))
-            for warning in stage_data.get('warnings', []):
-                all_warnings.append((stage_name, warning))
-        
-        if not all_errors and not all_warnings:
-            return ""
-        
-        issues_html = []
-        
-        for stage, error in all_errors:
-            issues_html.append(f'<div class="issue-item error"><span class="issue-icon">✗</span>[{stage}] {error}</div>')
-        
-        for stage, warning in all_warnings:
-            issues_html.append(f'<div class="issue-item"><span class="issue-icon">⚠</span>[{stage}] {warning}</div>')
-        
-        total_issues = len(all_errors) + len(all_warnings)
-        
-        return f"""
-        <div class="section">
-            <h2 class="section-title">⚠️ Issues Detected ({total_issues})</h2>
-            <div class="issue-list">
-                {''.join(issues_html)}
-            </div>
-        </div>
-"""
-    
-    def _generate_audit_trail(
-        self,
-        monitoring: Dict[str, Any],
-        audit: Optional[Dict[str, Any]]
-    ) -> str:
-        """Generar tabla de auditoría detallada"""
-        stages = monitoring.get('stages', {})
-        
-        if not stages:
+    def _render_suites(self, suites: dict) -> str:
+        """Renderizar tabla de suites"""
+        if not suites:
             return ""
         
         rows = []
-        for stage_name, stage_data in stages.items():
-            start_time = stage_data.get('start_time', 'N/A')
-            end_time = stage_data.get('end_time', 'N/A')
-            duration = stage_data.get('duration_seconds', 0)
-            records = stage_data.get('records_output', 0)
-            status = stage_data.get('status', 'unknown')
-            
-            # Status icon
-            status_icon = '✓' if status == 'completed' else '✗'
-            status_color = '#4caf50' if status == 'completed' else '#f44336'
+        for suite_name, data in suites.items():
+            success_rate = (data['passed'] / data['total'] * 100) if data['total'] > 0 else 0
+            status = '✓' if success_rate == 100 else '⚠' if success_rate >= 50 else '✗'
             
             rows.append(f"""
-                <tr>
-                    <td><strong>{stage_name}</strong></td>
-                    <td>{start_time}</td>
-                    <td>{end_time}</td>
-                    <td>{duration:.2f}s</td>
-                    <td>{records:,}</td>
-                    <td style="color: {status_color}; font-weight: bold;">{status_icon} {status}</td>
-                </tr>
-""")
+            <tr>
+                <td><span class="suite-name">{suite_name}</span></td>
+                <td><span class="suite-type">{data['type']}</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">{data['passed']}</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">{data['failed']}</td>
+                <td style="text-align: center; font-weight: 600;">{data['total']}</td>
+                <td style="text-align: center;">{success_rate:.1f}%</td>
+            </tr>
+            """)
         
         return f"""
-        <div class="section">
-            <h2 class="section-title">📋 Audit Trail</h2>
-            <table class="audit-table">
+        <table class="suites-table">
+            <thead>
+                <tr>
+                    <th>Suite Name</th>
+                    <th>Type</th>
+                    <th style="text-align: center;">Passed</th>
+                    <th style="text-align: center;">Failed</th>
+                    <th style="text-align: center;">Total</th>
+                    <th style="text-align: center;">Success Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        """
+    
+    def _render_failures_table(self, validation_results: list) -> str:
+        """Renderizar tabla detallada de fallos con explicaciones claras"""
+        failures = []
+        for result in validation_results:
+            if not result['passed'] and result.get('failure_details'):
+                for detail in result['failure_details']:
+                    failures.append({
+                        'suite': result['rule_name'],
+                        'detail': detail
+                    })
+        
+        if not failures:
+            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente</div>'
+        
+        # Procesar todos los failures primero
+        processed_failures = []
+        seen_failures = set()  # Para evitar duplicados
+        
+        for item in failures:
+            detail = item['detail']
+            exp_type = detail.get('expectation_type', 'N/A')
+            kwargs = detail.get('kwargs', {})
+            column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
+            
+            # Descripción legible de la validación con análisis de ataques
+            description = self._get_expectation_description(exp_type, kwargs, detail)
+            
+            # Métricas
+            unexpected_count = detail.get('unexpected_count', 0) or 0
+            unexpected_percent = detail.get('unexpected_percent') or 0.0
+            element_count = detail.get('element_count', 0) or 0
+            
+            # Convertir a números
+            try:
+                unexpected_count = int(unexpected_count)
+                element_count = int(element_count)
+                unexpected_percent = float(unexpected_percent)
+            except:
+                unexpected_count = 0
+                element_count = 0
+                unexpected_percent = 0.0
+            
+            # Clasificar si es validación table-level o record-level
+            is_table_level = exp_type in [
+                'expect_table_row_count_to_be_between',
+                'expect_table_column_count_to_equal',
+                'expect_table_columns_to_match_ordered_list',
+                'expect_column_mean_to_be_between',
+                'expect_column_stdev_to_be_between'
+            ]
+            
+            # Para table-level, mostrar con métricas diferentes
+            if is_table_level:
+                # Usar element_count como total de registros
+                if element_count > 0:
+                    affected_display = f"Toda la tabla ({element_count:,} registros)"
+                    impact_display = "100%"
+                    severity = 'critical'
+                    severity_label = 'CRÍTICO'
+                    severity_color = '#dc3545'
+                else:
+                    affected_display = "Toda la tabla"
+                    impact_display = "100%"
+                    severity = 'high'
+                    severity_label = 'ALTO'
+                    severity_color = '#fd7e14'
+            else:
+                # Validaciones a nivel de registro
+                if element_count > 0:
+                    affected_display = f"{unexpected_count:,} / {element_count:,}"
+                    impact_display = f"{unexpected_percent:.1f}%"
+                else:
+                    # Cuando no hay element_count, mostrar observed_value si está disponible
+                    observed_value = detail.get('observed_value')
+                    if observed_value is not None:
+                        if isinstance(observed_value, dict):
+                            # Para quantiles, mostrar valores observados vs esperados
+                            if 'quantiles' in observed_value and 'values' in observed_value:
+                                quantiles = observed_value.get('quantiles', [])
+                                values = observed_value.get('values', [])
+                                # Obtener rangos esperados
+                                value_ranges = kwargs.get('quantile_ranges', {}).get('value_ranges', [])
+                                details_str = []
+                                for i, (q, v) in enumerate(zip(quantiles, values)):
+                                    expected = value_ranges[i] if i < len(value_ranges) else [None, None]
+                                    q_pct = int(q * 100)
+                                    details_str.append(f"P{q_pct}: {v:.2f} (esperado: {expected[0]}-{expected[1]})")
+                                affected_display = "; ".join(details_str)
+                            else:
+                                affected_display = f"Valor observado: {observed_value}"
+                        elif isinstance(observed_value, (int, float)):
+                            affected_display = f"Valor observado: {observed_value:,}"
+                        else:
+                            affected_display = f"Condición no cumplida"
+                    else:
+                        affected_display = "N/A"
+                    impact_display = "N/A"
+                
+                # Severity basada en porcentaje o tipo de validación
+                if unexpected_percent > 10:
+                    severity = 'critical'
+                    severity_label = 'CRÍTICO'
+                    severity_color = '#dc3545'
+                elif unexpected_percent > 5:
+                    severity = 'high'
+                    severity_label = 'ALTO'
+                    severity_color = '#fd7e14'
+                elif element_count == 0:  # Sin métricas específicas
+                    severity = 'medium'
+                    severity_label = 'MEDIO'
+                    severity_color = '#ffc107'
+                else:
+                    severity = 'medium'
+                    severity_label = 'MEDIO'
+                    severity_color = '#ffc107'
+            
+            # Formatear columna
+            if isinstance(column, list):
+                column_display = ', '.join(str(c) for c in column)
+            else:
+                column_display = str(column)
+            
+            # Evitar duplicados - incluir kwargs relevantes para distinguir expectativas diferentes
+            # Por ejemplo: misma columna con diferentes regex o diferentes value_set
+            kwargs_key = f"{kwargs.get('regex', '')}{kwargs.get('value_set', '')}{kwargs.get('row_condition', '')}{kwargs.get('mostly', '')}"
+            failure_key = f"{item['suite']}:{column_display}:{exp_type}:{kwargs_key}"
+            if failure_key in seen_failures:
+                continue
+            seen_failures.add(failure_key)
+            
+            # Almacenar información procesada para ordenar después
+            processed_failures.append({
+                'suite': item['suite'],
+                'column_display': column_display,
+                'description': description,
+                'severity': severity,
+                'severity_label': severity_label,
+                'severity_color': severity_color,
+                'affected_display': affected_display,
+                'impact_display': impact_display
+            })
+        
+        if not processed_failures:
+            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente (fallos sin impacto filtrados)</div>'
+        
+        # Ordenar alfabéticamente por Suite, luego por Columna(s)
+        processed_failures.sort(key=lambda x: (x['suite'].lower(), x['column_display'].lower()))
+        
+        # Generar filas HTML
+        rows = []
+        for failure in processed_failures:
+            rows.append(f"""
+            <tr style="border-left: 4px solid {failure['severity_color']};">
+                <td>
+                    <strong style="color: #0f3460;">{failure['suite']}</strong>
+                </td>
+                <td>
+                    <span style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">
+                        {failure['column_display']}
+                    </span>
+                </td>
+                <td style="font-size: 0.95em;">
+                    {failure['description']}
+                </td>
+                <td style="text-align: center;">
+                    <span style="background: {failure['severity_color']}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
+                        {failure['severity_label']}
+                    </span>
+                </td>
+                <td style="text-align: right; font-family: monospace;">
+                    {failure['affected_display']}
+                </td>
+                <td style="text-align: right;">
+                    <strong style="color: #dc3545; font-size: 1.1em;">{failure['impact_display']}</strong>
+                </td>
+            </tr>
+            """)
+        
+        return f"""
+        <div style="margin-top: 30px;">
+            <h3 style="color: #dc3545; font-size: 1.3em; margin-bottom: 20px;">
+                ⚠️ Detalle de Validaciones Fallidas ({len(rows)} problemas detectados)
+            </h3>
+            <table class="failures-table" style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <thead>
-                    <tr>
-                        <th>Stage</th>
-                        <th>Start Time</th>
-                        <th>End Time</th>
-                        <th>Duration</th>
-                        <th>Records</th>
-                        <th>Status</th>
+                    <tr style="background: #1a1a2e; color: white;">
+                        <th style="padding: 12px; text-align: left; width: 18%;">Suite</th>
+                        <th style="padding: 12px; text-align: left; width: 12%;">Columna(s)</th>
+                        <th style="padding: 12px; text-align: left; width: 40%;">¿Qué falló?</th>
+                        <th style="padding: 12px; text-align: center; width: 10%;">Severidad</th>
+                        <th style="padding: 12px; text-align: right; width: 12%;">Registros Afectados</th>
+                        <th style="padding: 12px; text-align: right; width: 8%;">Impacto</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1263,24 +790,257 @@ class HTMLReportGenerator:
                 </tbody>
             </table>
         </div>
-"""
+        """
     
-    def _get_progress_class(self, percentage: float) -> str:
-        """Determinar clase CSS para barra de progreso"""
-        if percentage >= 90:
-            return 'high'
-        elif percentage >= 70:
-            return 'medium'
-        else:
-            return 'low'
+    def _get_expectation_description(self, exp_type: str, kwargs: dict, failed_detail: dict = None) -> str:
+        """Generar descripción legible de una expectativa"""
+        column = kwargs.get('column', 'N/A')
+        
+        # Detectar si es una validación de seguridad combinada
+        if exp_type == 'expect_column_values_to_not_match_regex':
+            regex = kwargs.get('regex', '')
+            # Si el regex contiene alternación (|), es probable que sea un pattern combinado
+            if '|' in regex and len(regex) > 200:
+                # Es una validación de seguridad combinada - analizar qué ataques específicos se detectaron
+                detected_attacks = self._analyze_security_failures(failed_detail) if failed_detail else []
+                
+                if detected_attacks:
+                    attacks_list = ', '.join(f"<strong>{attack}</strong>" for attack in detected_attacks[:5])
+                    return f"<strong>Vulnerabilidades detectadas:</strong> {attacks_list}" + (" y más..." if len(detected_attacks) > 5 else "")
+                else:
+                    return "<strong>Vulnerabilidades de seguridad detectadas</strong>: Patrones maliciosos encontrados (SQL injection, XSS, command injection, data leakage, u otros ataques OWASP Top 10)"
+            elif len(regex) <= 80:
+                return f"Se encontraron valores que coinciden con el patrón prohibido: <code>{regex}</code>"
+            else:
+                return f"Se encontraron valores que coinciden con el patrón prohibido: <code>{regex[:80]}...</code>"
+        
+        # Mapeo de expectativas a descripciones claras
+        descriptions = {
+            'expect_column_values_to_match_regex': 
+                f"Valores no cumplen el formato esperado: <code>{kwargs.get('regex', 'N/A')[:80]}</code>",
+            
+            'expect_column_values_to_be_in_set': 
+                f"Valores fuera del conjunto permitido: {kwargs.get('value_set', [])}",
+            
+            'expect_column_values_to_not_be_in_set': 
+                f"Se encontraron valores prohibidos del conjunto: {kwargs.get('value_set', [])}",
+            
+            'expect_column_values_to_be_between': 
+                f"Valores fuera del rango [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
+            
+            'expect_column_mean_to_be_between': 
+                f"Promedio de columna fuera del rango esperado [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
+            
+            'expect_column_quantile_values_to_be_between': 
+                f"Percentiles fuera de rangos esperados (outliers detectados)",
+            
+            'expect_compound_columns_to_be_unique': 
+                f"Se encontraron registros duplicados por la combinación de columnas: {kwargs.get('column_list', [])}",
+            
+            'expect_column_values_to_not_be_null': 
+                f"Se encontraron valores nulos en columna que no debe tenerlos",
+            
+            'expect_column_values_to_be_unique': 
+                f"Se encontraron valores duplicados (debe ser única)",
+            
+            'expect_column_proportion_of_unique_values_to_be_between': 
+                f"Proporción de valores únicos fuera de rango: [{kwargs.get('min_value', 0)*100:.0f}%, {kwargs.get('max_value', 1)*100:.0f}%]",
+            
+            'expect_table_row_count_to_be_between': 
+                f"Número de filas fuera de rango [{self._format_number(kwargs.get('min_value'))}, {self._format_number(kwargs.get('max_value'))}]",
+            
+            'expect_table_column_count_to_equal': 
+                f"Número de columnas diferente al esperado ({kwargs.get('value', 'N/A')})",
+            
+            'expect_table_columns_to_match_ordered_list': 
+                f"Las columnas no coinciden con la estructura esperada"
+        }
+        
+        # Buscar descripción
+        description = descriptions.get(exp_type)
+        if description:
+            return description
+        
+        # Fallback genérico
+        simple_name = exp_type.replace('expect_column_values_to_', '').replace('expect_column_', '').replace('expect_table_', '').replace('_', ' ').title()
+        return f"Validación '{simple_name}' falló"
     
-    def _get_score_class(self, score: float) -> str:
-        """Determinar clase CSS para score de calidad"""
-        if score >= 90:
-            return 'score-excellent'
-        elif score >= 75:
-            return 'score-good'
-        elif score >= 60:
-            return 'score-fair'
-        else:
-            return 'score-poor'
+    def _analyze_security_failures(self, failed_detail: dict) -> List[str]:
+        """
+        Analizar valores fallidos para determinar qué ataques específicos se detectaron.
+        
+        Args:
+            failed_detail: Diccionario con detalles del fallo (incluye partial_unexpected_list)
+        
+        Returns:
+            Lista de nombres de ataques detectados
+        """
+        # Mapeo de patterns a nombres legibles (sin flags inline, se usan parámetros)
+        SECURITY_PATTERNS = {
+            # A03:2021 - Injection (case-insensitive)
+            r"(?:'|--|;|\/\*|\*\/|union\s+select|insert\s+into|delete\s+from|drop\s+table|update\s+.+set|exec\s*\(|execute\s*\(|xp_cmdshell|sp_executesql)": ("SQL Injection", re.IGNORECASE),
+            r"(?:or\s+1\s*=\s*1|and\s+1\s*=\s*1|having\s+1\s*=\s*1|waitfor\s+delay|benchmark\s*\(|sleep\s*\(|pg_sleep)": ("SQL Injection (Advanced)", re.IGNORECASE),
+            r"(?:\$ne|\$gt|\$lt|\$gte|\$lte|\$in|\$nin|\$where|\$regex|\$options|\$expr|\$jsonSchema)": ("NoSQL Injection", 0),
+            r"(?:!!python/|!!map|!!omap|!!pairs|__import__|eval\(|exec\()": ("YAML Injection", 0),
+            r"(?:\{\{|\}\}|\{%|%\}|\$\{|<%|%>|#\{)": ("Template Injection (SSTI)", 0),
+            r"(?:;|\||&&|\n|\r|`|\$\(|>\s*\/|<\s*\/|wget\s|curl\s|nc\s|bash\s|sh\s|cmd\s|powershell\s|eval\s|exec\s)": ("Command Injection", 0),
+            r"^[=+\-@]": ("CSV Injection", 0),
+            
+            # A03:2021 - XSS (case-insensitive)
+            r"(?:<script[^>]*>|<\/script>|javascript:|onerror\s*=|onload\s*=|<iframe|<object|<embed)": ("XSS (Cross-Site Scripting)", re.IGNORECASE),
+            r"(?:<img[^>]+src|<svg[^>]*>|<math[^>]*>|<video[^>]*>|<audio[^>]*>|<link[^>]+href|vbscript:|livescript:|mocha:|data:text/html)": ("XSS (Advanced)", re.IGNORECASE),
+            r"on(?:abort|blur|change|click|dblclick|error|focus|keydown|keypress|keyup|load|mousedown|mousemove|mouseout|mouseover|mouseup|reset|resize|select|submit|unload)\s*=": ("XSS (Event Handlers)", re.IGNORECASE),
+            
+            # A04:2021 - Path Traversal
+            r"(?:\.\.\/|\.\.\\|%2e%2e%2f|%2e%2e%5c|..%2f|..%5c|\.\\.%252f)": ("Path Traversal", 0),
+            r"(?:[C-Z]:\\|\\\\)": ("Path Traversal (Windows)", 0),
+            r"(?:%00|\\x00)": ("Null Byte Injection", 0),
+            r"(?:file://|php://|zip://|data://|expect://|input://)": ("File Inclusion", 0),
+            
+            # A02:2021 - Data Leakage
+            r"(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token)\s*[:=]\s*['\"]?[a-zA-Z0-9_-]{20,}['\"]?": ("API Key Exposure", re.IGNORECASE),
+            r"(?:AKIA|ASIA)[0-9A-Z]{16}": ("AWS Access Key", 0),
+            r"aws.{0,20}?['\"][0-9a-zA-Z/+=]{40}['\"]": ("AWS Secret Key", re.IGNORECASE),
+            r"ghp_[0-9a-zA-Z]{36}|gho_[0-9a-zA-Z]{36}|ghu_[0-9a-zA-Z]{36}|ghs_[0-9a-zA-Z]{36}|ghr_[0-9a-zA-Z]{36}": ("GitHub Token", 0),
+            r"xox[pboa]-[0-9]{12}-[0-9]{12}-[0-9a-zA-Z]{24,32}": ("Slack Token", 0),
+            r"AIza[0-9A-Za-z\\-_]{35}": ("Google API Key", 0),
+            r"(?:-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----)": ("Private Key (RSA/DSA/EC)", 0),
+            r"(?:ssh-rsa |ssh-dss |ecdsa-sha2-nistp256 )AAAA[0-9A-Za-z+/]+": ("SSH Key", 0),
+            r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+": ("JWT Token", 0),
+            r"bearer\s+[a-zA-Z0-9_\-\.=]+": ("Bearer Token", re.IGNORECASE),
+            r"(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?": ("Password Pattern", re.IGNORECASE),
+            r"(?:server|host|database|uid|pwd|password)\s*=": ("Connection String", re.IGNORECASE),
+            r"\b\d{3}-\d{2}-\d{4}\b": ("SSN (Social Security Number)", 0),
+            r"\b(?:\d{4}[\s-]?){3}\d{4}\b": ("Credit Card Number", 0),
+            
+            # A10:2021 - SSRF
+            r"(?:localhost|127\.0\.0\.1|169\.254|metadata|internal)": ("SSRF Patterns", 0),
+            
+            # Extended
+            r"(?:<!ENTITY|<!DOCTYPE|SYSTEM\s+['\"]|PUBLIC\s+['\"])": ("XXE Injection", 0),
+            r"(?:\r\n|\n|%0d|%0a)(?:Content-Type|Set-Cookie|Location):": ("HTTP Header Injection", 0),
+            r"(?:\r\n|\n|%0d|%0a)(?:To:|From:|Cc:|Bcc:|Subject:)": ("Email Header Injection", 0),
+            r"(?:%0d|%0a|\\r|\\n|\r\n)": ("CRLF Injection", 0),
+            r"(?:java\.lang\.Runtime|ProcessBuilder|ObjectInputStream)": ("Java Deserialization", 0),
+            r"(?:__reduce__|__setstate__|pickle|marshal|yaml\.load|eval\(|exec\()": ("Python Deserialization", 0),
+            r"(?:admin|root|sudo|system|administrator|superuser|sa\b)": ("Privilege Escalation Attempt", re.IGNORECASE)
+        }
+        
+        # Obtener valores que fallaron
+        unexpected_values = failed_detail.get('partial_unexpected_list', []) if failed_detail else []
+        
+        if not unexpected_values:
+            return []
+        
+        # Convertir a strings si no lo son
+        unexpected_values = [str(v) for v in unexpected_values if v is not None]
+        
+        # Analizar qué patterns coinciden
+        detected_attacks = set()
+        
+        for value in unexpected_values:
+            for pattern, (attack_name, flags) in SECURITY_PATTERNS.items():
+                try:
+                    if re.search(pattern, value, flags=flags):
+                        detected_attacks.add(attack_name)
+                except re.error:
+                    continue
+        
+        return sorted(list(detected_attacks))
+    
+    def _format_number(self, value) -> str:
+        """Formatear número con separadores de miles, o retornar string si no es número"""
+        if value is None or value == 'N/A':
+            return 'N/A'
+        try:
+            return f"{int(value):,}"
+        except (ValueError, TypeError):
+            return str(value)
+        return f"Validación '{simple_name}' falló"
+    
+    def _render_data_flow_cards(self, stages: dict) -> str:
+        """Renderizar tarjetas de flujo de datos"""
+        cards = []
+        
+        stage_order = ["INGESTION", "VALIDATION", "TRANSFORMATION", "OUTPUT"]
+        stage_icons = {
+            "INGESTION": "📥",
+            "VALIDATION": "✓",
+            "TRANSFORMATION": "⚙️",
+            "OUTPUT": "📤"
+        }
+        
+        for stage_name in stage_order:
+            if stage_name in stages:
+                data = stages[stage_name]
+                records = data.get('records_output', 0)
+                icon = stage_icons.get(stage_name, "•")
+                
+                cards.append(f"""
+                <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 1.5em; margin-bottom: 5px;">{icon}</div>
+                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">{stage_name}</div>
+                    <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">{records:,}</div>
+                    <div style="font-size: 0.7em; color: #6c757d;">records</div>
+                </div>
+                """)
+        
+        return ''.join(cards)
+    
+    def _render_stages(self, stages: dict) -> str:
+        """Renderizar tabla de stages"""
+        if not stages:
+            return ""
+        
+        rows = []
+        for stage_name, data in stages.items():
+            duration = data.get('duration_seconds', 0)
+            records_in = data.get('records_input', 0)
+            records_out = data.get('records_output', 0)
+            errors = len(data.get('errors', []))
+            
+            status = '✓' if errors == 0 else '✗'
+            status_color = '#28a745' if errors == 0 else '#dc3545'
+            
+            # Explicación contextual por etapa
+            if stage_name == "INGESTION":
+                context = "Loaded from sources"
+            elif stage_name == "VALIDATION":
+                context = f"{data.get('validations_passed', 0)}/{data.get('validations_passed', 0) + data.get('validations_failed', 0)} validations passed"
+            elif stage_name == "TRANSFORMATION":
+                context = "Filtered & transformed"
+            elif stage_name == "OUTPUT":
+                context = "Written to targets"
+            else:
+                context = ""
+            
+            rows.append(f"""
+            <tr>
+                <td><span class="stage-name">{stage_name}</span></td>
+                <td style="text-align: right;">{duration:.2f}s</td>
+                <td style="text-align: right;">{records_in:,}</td>
+                <td style="text-align: right;">{records_out:,}</td>
+                <td style="font-size: 0.85em; color: #6c757d;">{context}</td>
+                <td style="text-align: right; color: {status_color};">{errors}</td>
+                <td style="text-align: center; font-size: 1.2em; color: {status_color};">{status}</td>
+            </tr>
+            """)
+        
+        return f"""
+        <table class="stages-table">
+            <thead>
+                <tr>
+                    <th>Stage</th>
+                    <th style="text-align: right;">Duration</th>
+                    <th style="text-align: right;">Records In</th>
+                    <th style="text-align: right;">Records Out</th>
+                    <th>Context</th>
+                    <th style="text-align: right;">Errors</th>
+                    <th style="text-align: center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        """

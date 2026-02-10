@@ -165,7 +165,10 @@ class ExecutionMetrics:
         self.stages[stage.stage_name] = stage
         
         # Actualizar contadores globales
-        self.total_records_processed += stage.records_output
+        # CAMBIO: Solo contar registros de INGESTION para evitar duplicados
+        if stage.stage_name == "INGESTION":
+            self.total_records_processed = stage.records_output
+        
         self.total_records_failed += stage.records_failed
         self.total_errors += len(stage.errors)
         self.total_warnings += len(stage.warnings)
@@ -274,7 +277,11 @@ class MonitoringCollector:
         
         try:
             yield stage
-            stage.complete(success=True)
+            if stage_name == "VALIDATION" and stage.quality_score is not None:
+                success = stage.quality_score >= 75.0
+            else:
+                success = True
+            stage.complete(success=success)
         except Exception as e:
             stage.add_error(str(e))
             stage.complete(success=False)

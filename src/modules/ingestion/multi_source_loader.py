@@ -329,37 +329,3 @@ class MultiSourceLoader:
         
         # Convertir de vuelta a dict
         return json.loads(config_str)
-    
-    def get_dataset(self, dataset_id: str) -> Optional[pd.DataFrame]:
-        """
-        Obtener dataset por ID.
-        
-        Args:
-            dataset_id: ID del dataset
-        
-        Returns:
-            DataFrame o None si no existe
-        """
-        return self.datasets.get(dataset_id)
-    
-    def list_datasets(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Listar todos los datasets cargados.
-        
-        Returns:
-            Diccionario con info de cada dataset
-        """
-        info = {}
-        for dataset_id, df in self.datasets.items():
-            info[dataset_id] = {
-                'rows': len(df),
-                'columns': len(df.columns),
-                'column_names': list(df.columns),
-                'memory_usage_mb': df.memory_usage(deep=True).sum() / (1024 * 1024)
-            }
-        return info
-    
-    def clear_datasets(self):
-        """Limpiar todos los datasets de memoria"""
-        self.datasets.clear()
-        logger.info("✓ Datasets limpiados de memoria")

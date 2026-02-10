@@ -1,0 +1,17 @@
+execution_id,execution_date,execution_status,overall_quality_score,suite_name,dataset_name,total_validations,passed_validations,failed_validations,suite_quality_score,total_records,execution_time_ms,failure_rate_pct
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,02_Tipos_y_Formatos,raw_customers,17,8,9,47.06,11000,,52.94
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,02_Tipos_y_Formatos,raw_transactions,10,6,4,60.00,50000,,40.00
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,03_Calidad_de_Datos,raw_customers,15,8,7,53.33,11000,,46.67
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,03_Calidad_de_Datos,raw_transactions,14,13,1,92.86,50000,,7.14
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,04_Seguridad_OWASP,raw_customers,10,2,8,20.00,11000,,80.00
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,04_Seguridad_OWASP,raw_transactions,5,2,3,40.00,50000,,60.00
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,06_Reglas_de_Negocio,raw_customers,1,1,0,100.00,11000,,0.00
+41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,56.16,06_Reglas_de_Negocio,raw_transactions,1,1,0,100.00,50000,,0.00
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,02_Tipos_y_Formatos,raw_customers,17,8,9,47.06,11000,,52.94
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,02_Tipos_y_Formatos,raw_transactions,10,6,4,60.00,50000,,40.00
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,03_Calidad_de_Datos,raw_customers,15,11,4,73.33,11000,,26.67
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,03_Calidad_de_Datos,raw_transactions,14,13,1,92.86,50000,,7.14
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,04_Seguridad_OWASP,raw_customers,10,2,8,20.00,11000,,80.00
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,04_Seguridad_OWASP,raw_transactions,5,2,3,40.00,50000,,60.00
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,06_Reglas_de_Negocio,raw_customers,1,1,0,100.00,11000,,0.00
+0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,failed,60.27,06_Reglas_de_Negocio,raw_transactions,1,1,0,100.00,50000,,0.00

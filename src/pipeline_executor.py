@@ -25,7 +25,8 @@ from src.modules.validation.schema_validator import convert_simple_validation_to
 from src.modules.transformation import DataTransformer
 from src.modules.auditing import AuditManager
 from src.modules.monitoring import MonitoringCollector
-from src.modules.reporting.html_generator_v2 import HTMLReportGenerator
+from src.modules.reporting.html_generator import HTMLReportGenerator
+from src.modules.reporting.executive_report import ExecutiveReportGenerator
 from src.modules.ingestion.config import POSTGRES_CONFIG
 from src.config import config
 # Security detection moved to validation stage
@@ -194,14 +195,14 @@ class PipelineExecutor:
             if 'output' in self.config:
                 self._execute_outputs(result)
             
-            # Completar ejecución exitosa
-            result.complete("completed")
-            
-            # Finalizar monitoring y obtener resumen
+            # Finalizar monitoring y determinar status
             self.monitoring.finalize()
             monitoring_summary = self.monitoring.get_summary()
+            health_status = self.monitoring.get_health_status()
+            execution_status = "completed" if health_status.value in ['healthy', 'warning'] else "failed"
+            result.complete(execution_status)
             
-            # Generar reporte HTML con datos detallados
+            # Generar reportes
             try:
                 # Recopilar datos de auditoría para el reporte
                 audit_data = {
@@ -210,19 +211,29 @@ class PipelineExecutor:
                     'validation_results': self.audit.get_validation_results(self.execution_id)
                 }
                 
+                # Reporte técnico detallado (HTML)
                 report_generator = HTMLReportGenerator()
                 report_path = report_generator.generate_report(
                     monitoring_summary=monitoring_summary,
                     audit_data=audit_data
                 )
                 result.report_path = report_path
-                logger.info(f"✓ Reporte HTML: {report_path}")
+                logger.info(f"✓ Reporte Técnico: {report_path}")
+                
+                # Reporte ejecutivo (Management)
+                exec_generator = ExecutiveReportGenerator()
+                exec_report_path = exec_generator.generate_report(
+                    monitoring_summary=monitoring_summary
+                )
+                logger.info(f"✓ Reporte Ejecutivo: {exec_report_path}")
+                
             except Exception as e:
-                logger.warning(f"No se pudo generar reporte HTML: {e}")
+                logger.warning(f"No se pudo generar reportes: {e}")
+                exec_report_path = None
             
             self.audit.complete_execution(
                 execution_id=self.execution_id,
-                status="completed",
+                status=execution_status,
                 records_processed=result.records_processed,
                 records_failed=result.records_failed,
                 stages_summary=[{
@@ -235,9 +246,13 @@ class PipelineExecutor:
                     'quality_score': stage.quality_score,
                     'validations_passed': stage.validations_passed,
                     'validations_failed': stage.validations_failed
-                } for stage in self.monitoring.metrics.stages],
+                } for stage in self.monitoring.metrics.stages.values()],
                 quality_score=monitoring_summary.get('overall_quality_score'),
+                health_status=health_status.value,
+                total_errors=monitoring_summary.get('total_errors', 0),
+                total_warnings=monitoring_summary.get('total_warnings', 0),
                 report_path=str(result.report_path) if result.report_path else None,
+                executive_report_path=str(exec_report_path) if exec_report_path else None,
                 metrics={
                     'health_status': self.monitoring.get_health_status().value
                 }
@@ -276,6 +291,12 @@ class PipelineExecutor:
             return
         
         with self.monitoring.track_stage("INGESTION") as stage:
+            # Iniciar tracking en BD
+            self.audit.start_stage(
+                execution_id=self.execution_id,
+                stage_name="INGESTION"
+            )
+            
             total_records = 0
             
             for source_config in sources:
@@ -311,7 +332,21 @@ class PipelineExecutor:
                     )
             
             # Establecer métricas de la etapa
+            # Input es 0 porque lee desde source externo
             stage.set_records(input=0, output=total_records, failed=0)
+            
+            # Completar tracking en BD con métricas
+            self.audit.complete_stage(
+                execution_id=self.execution_id,
+                stage_name="INGESTION",
+                status='completed' if len(stage.errors) == 0 else 'failed',
+                records_in=0,
+                records_out=stage.records_output,
+                records_failed=stage.records_failed,
+                error_count=len(stage.errors),
+                warning_count=len(stage.warnings),
+                error_details=stage.errors
+            )
     
     # SECURITY STAGE REMOVED
     # Security testing ahora se hace PRE-PIPELINE usando data_infection module
@@ -331,6 +366,12 @@ class PipelineExecutor:
           b) Sintaxis legacy (expectations directas)
         """
         with self.monitoring.track_stage("VALIDATION") as stage:
+            # Iniciar tracking en BD
+            self.audit.start_stage(
+                execution_id=self.execution_id,
+                stage_name="VALIDATION"
+            )
+            
             # Support both 'quality' (legacy) and 'validation' (new) config keys
             validation_config = self.config.get('validation', self.config.get('quality', {}))
             
@@ -376,13 +417,32 @@ class PipelineExecutor:
                     failed=failed_validations
                 )
                 
-                # Establecer conteo de registros validados
-                stage.set_records(input=total_records_validated, output=total_records_validated, failed=0)
+                # Contar registros únicos validados (no multiplicar por número de suites)
+                unique_records = sum(len(self.datasets.get(name, [])) for name in self.datasets.keys())
+                stage.set_records(input=unique_records, output=unique_records, failed=0)
                 
                 logger.info(f"\n[VALIDATION] Quality Score: {quality_score:.1f}%")
                 logger.info(f"  Passed: {passed_validations}/{total_validations}")
                 logger.info(f"  Failed: {failed_validations}/{total_validations}")
-                logger.info(f"  Records validated: {total_records_validated:,}")
+                logger.info(f"  Records validated: {unique_records:,}")
+            
+            # Completar tracking en BD con métricas
+            self.audit.complete_stage(
+                execution_id=self.execution_id,
+                stage_name="VALIDATION",
+                status='completed' if len(stage.errors) == 0 else 'failed',
+                records_in=stage.records_input,
+                records_out=stage.records_output,
+                records_failed=stage.records_failed,
+                error_count=len(stage.errors),
+                warning_count=len(stage.warnings),
+                error_details=stage.errors,
+                metrics={
+                    'quality_score': stage.quality_score,
+                    'validations_passed': stage.validations_passed,
+                    'validations_failed': stage.validations_failed
+                }
+            )
     
     def _run_pandera_validation(self, validation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int, int]:
         """Ejecutar validación con Pandera.
@@ -419,7 +479,7 @@ class PipelineExecutor:
                 passed=passed,
                 failed_count=failed_count,
                 failure_details=validation_result.get('failures', []),
-                dataset_name=dataset_name,
+                dataset_name=input_dataset,
                 total_records=record_count,
                 severity="error" if not passed else "info"
             )
@@ -466,10 +526,9 @@ class PipelineExecutor:
             failed_count = validation_result.get('failed_expectations', 0)
             success = validation_result.get('success', False)
             
-            # Registrar cada expectativa individualmente en auditoría
+            # Registrar SOLO las expectativas fallidas (info útil)
             failed_details = validation_result.get('failed_details', [])
             
-            # Primero, registrar las expectativas fallidas
             for failed_detail in failed_details:
                 self.audit.log_validation_result(
                     execution_id=self.execution_id,
@@ -485,19 +544,19 @@ class PipelineExecutor:
                     expectation_type=failed_detail.get('expectation_type')
                 )
             
-            # Luego, registrar las expectativas que pasaron (sin detalles)
-            for _ in range(passed_count):
-                self.audit.log_validation_result(
+            # NUEVO: Registrar resumen agregado de validaciones (reduce inserts 95%+)
+            # En lugar de insertar 1 fila por cada validación pasada, insertamos UN resumen
+            if passed_count + failed_count > 0:
+                quality_score = (passed_count / (passed_count + failed_count)) * 100
+                self.audit.log_validation_summary(
                     execution_id=self.execution_id,
-                    rule_name=suite_name,
-                    rule_type="great_expectations",
-                    passed=True,
-                    failed_count=0,
-                    failure_details=[],
-                    dataset_name=dataset_name,
                     suite_name=suite_name,
-                    total_records=record_count,
-                    severity="info"
+                    dataset_name=dataset_name,
+                    total_validations=passed_count + failed_count,
+                    passed_validations=passed_count,
+                    failed_validations=failed_count,
+                    quality_score=quality_score,
+                    total_records=record_count
                 )
             
             # Log de seguridad si es suite de detección
@@ -526,6 +585,12 @@ class PipelineExecutor:
             return
         
         with self.monitoring.track_stage("TRANSFORMATION") as stage:
+            # Iniciar tracking en BD
+            self.audit.start_stage(
+                execution_id=self.execution_id,
+                stage_name="TRANSFORMATION"
+            )
+            
             total_records = 0
             
             for transform_config in transformations:
@@ -568,6 +633,19 @@ class PipelineExecutor:
             
             # Establecer métricas de la etapa
             stage.set_records(input=total_records, output=total_records, failed=0)
+            
+            # Completar tracking en BD con métricas
+            self.audit.complete_stage(
+                execution_id=self.execution_id,
+                stage_name="TRANSFORMATION",
+                status='completed' if len(stage.errors) == 0 else 'failed',
+                records_in=stage.records_input,
+                records_out=stage.records_output,
+                records_failed=stage.records_failed,
+                error_count=len(stage.errors),
+                warning_count=len(stage.warnings),
+                error_details=stage.errors
+            )
         
         logger.info("Transformation completed")
     

@@ -126,8 +126,9 @@ class GreatExpectationsValidator:
             logger.warning(f"Expectativa sin tipo: {config}")
             return None
         
-        # Extraer kwargs (todos los parámetros excepto expectation_type)
-        kwargs = {k: v for k, v in config.items() if k != 'expectation_type'}
+        # Extraer kwargs (todos los parámetros excepto expectation_type y campos internos que empiezan con _)
+        kwargs = {k: v for k, v in config.items() 
+                 if k != 'expectation_type' and not k.startswith('_')}
         
         try:
             return ExpectationConfiguration(

@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from uuid import uuid4
+import uuid
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
@@ -152,7 +153,11 @@ class AuditManager:
         metrics: Optional[Dict[str, Any]] = None,
         stages_summary: Optional[List[Dict]] = None,
         quality_score: Optional[float] = None,
-        report_path: Optional[str] = None
+        health_status: Optional[str] = None,
+        total_errors: int = 0,
+        total_warnings: int = 0,
+        report_path: Optional[str] = None,
+        executive_report_path: Optional[str] = None
     ) -> bool:
         """
         Completar registro de ejecución.
@@ -166,7 +171,11 @@ class AuditManager:
             metrics: Métricas adicionales de la ejecución
             stages_summary: Resumen de etapas ejecutadas
             quality_score: Puntaje de calidad (0-100)
-            report_path: Ruta del reporte HTML generado
+            health_status: Estado de salud (HEALTHY, WARNING, CRITICAL, FAILED)
+            total_errors: Número total de errores
+            total_warnings: Número total de warnings
+            report_path: Ruta del reporte técnico HTML generado
+            executive_report_path: Ruta del reporte ejecutivo HTML generado
             
         Returns:
             True si se actualizó correctamente
@@ -184,7 +193,11 @@ class AuditManager:
                         metrics = %s,
                         stages_summary = %s,
                         quality_score = %s,
-                        report_path = %s
+                        health_status = %s,
+                        total_errors = %s,
+                        total_warnings = %s,
+                        report_path = %s,
+                        executive_report_path = %s
                     WHERE id = %s
                 """, (
                     status,
@@ -194,7 +207,11 @@ class AuditManager:
                     json.dumps(metrics or {}),
                     json.dumps(stages_summary or []),
                     quality_score,
+                    health_status,
+                    total_errors,
+                    total_warnings,
                     report_path,
+                    executive_report_path,
                     execution_id
                 ))
                 
@@ -213,6 +230,136 @@ class AuditManager:
         except Exception as e:
             self.connection.rollback()
             logger.error(f"Failed to complete execution: {e}")
+            return False
+    
+    def start_stage(
+        self,
+        execution_id: str,
+        stage_name: str
+    ) -> Optional[str]:
+        """
+        Iniciar tracking de un stage del pipeline.
+        
+        Args:
+            execution_id: UUID de la ejecución padre
+            stage_name: Nombre del stage (INGESTION, VALIDATION, TRANSFORMATION, OUTPUT)
+            
+        Returns:
+            UUID del stage_execution creado, None si hubo error
+        """
+        stage_order_map = {
+            'INGESTION': 1,
+            'VALIDATION': 2,
+            'TRANSFORMATION': 3,
+            'OUTPUT': 4
+        }
+        
+        try:
+            with self.connection.cursor() as cursor:
+                stage_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO pipeline.stage_executions (
+                        id, execution_id, stage_name, stage_order, status, start_time
+                    ) VALUES (%s, %s, %s, %s, 'running', CURRENT_TIMESTAMP)
+                    ON CONFLICT (execution_id, stage_name) 
+                    DO UPDATE SET 
+                        start_time = CURRENT_TIMESTAMP,
+                        status = 'running',
+                        end_time = NULL
+                    RETURNING id
+                """, (
+                    stage_id,
+                    execution_id,
+                    stage_name,
+                    stage_order_map.get(stage_name, 0)
+                ))
+                
+                result = cursor.fetchone()
+                self.connection.commit()
+                
+                stage_id = result[0] if result else stage_id
+                logger.debug(f"Stage started: {stage_name} ({stage_id})")
+                return stage_id
+                
+        except Exception as e:
+            self.connection.rollback()
+            logger.error(f"Failed to start stage {stage_name}: {e}")
+            return None
+    
+    def complete_stage(
+        self,
+        execution_id: str,
+        stage_name: str,
+        status: str = 'completed',
+        records_in: int = 0,
+        records_out: int = 0,
+        records_failed: int = 0,
+        memory_usage_mb: Optional[float] = None,
+        cpu_usage_percent: Optional[float] = None,
+        error_count: int = 0,
+        warning_count: int = 0,
+        error_details: Optional[List[str]] = None,
+        metrics: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Completar tracking de un stage con métricas finales.
+        
+        Args:
+            execution_id: UUID de la ejecución padre
+            stage_name: Nombre del stage
+            status: Estado final (completed, failed, skipped)
+            records_in: Registros de entrada
+            records_out: Registros de salida
+            records_failed: Registros fallidos
+            memory_usage_mb: Uso de memoria en MB
+            cpu_usage_percent: Uso promedio de CPU
+            error_count: Número de errores
+            warning_count: Número de warnings
+            error_details: Lista de mensajes de error
+            metrics: Métricas adicionales (quality_score, validations_passed, etc)
+            
+        Returns:
+            True si se actualizó correctamente
+        """
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pipeline.stage_executions
+                    SET status = %s,
+                        end_time = CURRENT_TIMESTAMP,
+                        duration_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - start_time)),
+                        records_in = %s,
+                        records_out = %s,
+                        records_failed = %s,
+                        memory_usage_mb = %s,
+                        cpu_usage_percent = %s,
+                        error_count = %s,
+                        warning_count = %s,
+                        error_details = %s,
+                        metrics = %s
+                    WHERE execution_id = %s AND stage_name = %s
+                """, (
+                    status,
+                    records_in,
+                    records_out,
+                    records_failed,
+                    memory_usage_mb,
+                    cpu_usage_percent,
+                    error_count,
+                    warning_count,
+                    json.dumps(error_details or []),
+                    json.dumps(metrics or {}),
+                    execution_id,
+                    stage_name
+                ))
+                
+                self.connection.commit()
+                logger.debug(f"Stage completed: {stage_name} - {status}")
+                return True
+                
+        except Exception as e:
+            self.connection.rollback()
+            logger.error(f"Failed to complete stage {stage_name}: {e}")
             return False
     
     def log_validation_result(
@@ -275,6 +422,74 @@ class AuditManager:
         except Exception as e:
             self.connection.rollback()
             logger.error(f"Failed to log validation result: {e}")
+            return False
+    
+    def log_validation_summary(
+        self,
+        execution_id: str,
+        suite_name: str,
+        dataset_name: str,
+        total_validations: int,
+        passed_validations: int,
+        failed_validations: int,
+        quality_score: float,
+        total_records: int = 0,
+        execution_time_ms: Optional[int] = None
+    ) -> bool:
+        """
+        Registrar resumen agregado de validaciones por suite.
+        Esta tabla reemplaza el registro individual de validaciones pasadas,
+        reduciendo drásticamente el número de inserts en BD.
+        
+        Args:
+            execution_id: UUID de la ejecución
+            suite_name: Nombre del suite de validación
+            dataset_name: Nombre del dataset validado
+            total_validations: Total de validaciones ejecutadas
+            passed_validations: Validaciones que pasaron
+            failed_validations: Validaciones que fallaron
+            quality_score: Score de calidad (0-100)
+            total_records: Total de registros validados
+            execution_time_ms: Tiempo de ejecución del suite en milisegundos
+            
+        Returns:
+            True si se registró correctamente
+        """
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pipeline.validation_summary
+                    (execution_id, suite_name, dataset_name, total_validations,
+                     passed_validations, failed_validations, quality_score,
+                     total_records, execution_time_ms)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (execution_id, suite_name, dataset_name)
+                    DO UPDATE SET
+                        total_validations = EXCLUDED.total_validations,
+                        passed_validations = EXCLUDED.passed_validations,
+                        failed_validations = EXCLUDED.failed_validations,
+                        quality_score = EXCLUDED.quality_score,
+                        total_records = EXCLUDED.total_records,
+                        execution_time_ms = EXCLUDED.execution_time_ms,
+                        timestamp = CURRENT_TIMESTAMP
+                """, (
+                    execution_id,
+                    suite_name,
+                    dataset_name,
+                    total_validations,
+                    passed_validations,
+                    failed_validations,
+                    quality_score,
+                    total_records,
+                    execution_time_ms
+                ))
+                
+                self.connection.commit()
+                return True
+                
+        except Exception as e:
+            self.connection.rollback()
+            logger.error(f"Failed to log validation summary: {e}")
             return False
     
     def get_validation_results(self, execution_id: str) -> List[Dict[str, Any]]:
@@ -421,69 +636,6 @@ class AuditManager:
         except Exception as e:
             logger.error(f"Failed to get executions: {e}")
             return []
-    
-    def log_security_result(
-        self,
-        execution_id: str,
-        attack_type: str,
-        start_time: datetime,
-        end_time: datetime,
-        attempts_total: int,
-        attempts_detected: int,
-        attempts_blocked: int,
-        attempts_successful: int,
-        mttd_avg_ms: float,
-        vulnerabilities: List[str],
-        security_score: float
-    ) -> bool:
-        """
-        Registrar resultado de simulación de ataque.
-        
-        Args:
-            execution_id: UUID de la ejecución
-            attack_type: Tipo de ataque
-            start_time: Hora de inicio
-            end_time: Hora de fin
-            attempts_total: Total de intentos
-            attempts_detected: Intentos detectados
-            attempts_blocked: Intentos bloqueados
-            attempts_successful: Intentos exitosos
-            mttd_avg_ms: Tiempo promedio de detección
-            vulnerabilities: Lista de vulnerabilidades encontradas
-            security_score: Puntaje de seguridad (0-100)
-            
-        Returns:
-            True si se registró correctamente
-        """
-        try:
-            with self.connection.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO security.simulation_results
-                    (execution_id, attack_type, start_time, end_time, 
-                     attempts_total, attempts_detected, attempts_blocked, attempts_successful,
-                     mttd_avg_ms, vulnerabilities, security_score)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    execution_id,
-                    attack_type,
-                    start_time,
-                    end_time,
-                    attempts_total,
-                    attempts_detected,
-                    attempts_blocked,
-                    attempts_successful,
-                    mttd_avg_ms,
-                    json.dumps(vulnerabilities),
-                    security_score
-                ))
-                
-                self.connection.commit()
-                return True
-                
-        except Exception as e:
-            self.connection.rollback()
-            logger.error(f"Failed to log security result: {e}")
-            return False
     
     def close(self):
         """Cerrar conexión a la base de datos"""

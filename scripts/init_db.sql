@@ -160,7 +160,11 @@ CREATE TABLE IF NOT EXISTS pipeline.executions (
     metrics JSONB DEFAULT '{}',
     stages_summary JSONB DEFAULT '[]',
     quality_score NUMERIC(5, 2),
+    health_status VARCHAR(50),
+    total_errors INTEGER DEFAULT 0,
+    total_warnings INTEGER DEFAULT 0,
     report_path TEXT,
+    executive_report_path TEXT,
     
     CONSTRAINT executions_status_valid CHECK (
         status IN ('pending', 'running', 'completed', 'failed', 'cancelled')
@@ -173,6 +177,9 @@ CREATE TABLE IF NOT EXISTS pipeline.executions (
     ),
     CONSTRAINT executions_environment_valid CHECK (
         environment IN ('development', 'staging', 'production')
+    ),
+    CONSTRAINT executions_health_status_valid CHECK (
+        health_status IS NULL OR health_status IN ('healthy', 'warning', 'critical', 'failed')
     )
 );
 
@@ -184,7 +191,11 @@ COMMENT ON COLUMN pipeline.executions.environment IS 'Entorno: development, stag
 COMMENT ON COLUMN pipeline.executions.duration_seconds IS 'Duración total en segundos';
 COMMENT ON COLUMN pipeline.executions.stages_summary IS 'Resumen de etapas ejecutadas (INGESTION, VALIDATION, TRANSFORMATION)';
 COMMENT ON COLUMN pipeline.executions.quality_score IS 'Puntaje de calidad 0-100 basado en validaciones';
-COMMENT ON COLUMN pipeline.executions.report_path IS 'Ruta del reporte HTML generado';
+COMMENT ON COLUMN pipeline.executions.health_status IS 'Estado de salud: healthy, warning, critical, failed';
+COMMENT ON COLUMN pipeline.executions.total_errors IS 'Número total de errores en la ejecución';
+COMMENT ON COLUMN pipeline.executions.total_warnings IS 'Número total de warnings en la ejecución';
+COMMENT ON COLUMN pipeline.executions.report_path IS 'Ruta del reporte técnico HTML generado';
+COMMENT ON COLUMN pipeline.executions.executive_report_path IS 'Ruta del reporte ejecutivo HTML generado';
 
 -- Índices
 DO $$
@@ -219,6 +230,85 @@ BEGIN
     
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_quality_score') THEN
         CREATE INDEX idx_executions_quality_score ON pipeline.executions(quality_score DESC);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_health_status') THEN
+        CREATE INDEX idx_executions_health_status ON pipeline.executions(health_status);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_total_errors') THEN
+        CREATE INDEX idx_executions_total_errors ON pipeline.executions(total_errors) WHERE total_errors > 0;
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
+
+-- ============================================
+-- Tabla: pipeline.stage_executions
+-- Tracking granular de cada stage del pipeline
+-- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.stage_executions...'
+
+CREATE TABLE IF NOT EXISTS pipeline.stage_executions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    execution_id UUID NOT NULL REFERENCES pipeline.executions(id) ON DELETE CASCADE,
+    stage_name VARCHAR(50) NOT NULL,
+    stage_order INTEGER NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'running',
+    start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP WITH TIME ZONE,
+    duration_seconds NUMERIC(10, 3),
+    records_in INTEGER DEFAULT 0,
+    records_out INTEGER DEFAULT 0,
+    records_failed INTEGER DEFAULT 0,
+    memory_usage_mb NUMERIC(10, 2),
+    cpu_usage_percent NUMERIC(5, 2),
+    error_count INTEGER DEFAULT 0,
+    warning_count INTEGER DEFAULT 0,
+    error_details JSONB DEFAULT '[]',
+    metrics JSONB DEFAULT '{}',
+    
+    CONSTRAINT stage_executions_status_valid CHECK (
+        status IN ('running', 'completed', 'failed', 'skipped')
+    ),
+    CONSTRAINT stage_executions_stage_name_valid CHECK (
+        stage_name IN ('INGESTION', 'VALIDATION', 'TRANSFORMATION', 'OUTPUT')
+    ),
+    CONSTRAINT stage_executions_end_after_start CHECK (
+        end_time IS NULL OR end_time >= start_time
+    ),
+    CONSTRAINT stage_executions_unique_stage UNIQUE (execution_id, stage_name)
+);
+
+COMMENT ON TABLE pipeline.stage_executions IS 'Tracking granular de performance por stage del pipeline';
+COMMENT ON COLUMN pipeline.stage_executions.stage_order IS 'Orden de ejecución: 1=INGESTION, 2=VALIDATION, 3=TRANSFORMATION, 4=OUTPUT';
+COMMENT ON COLUMN pipeline.stage_executions.memory_usage_mb IS 'Uso de memoria durante el stage en MB';
+COMMENT ON COLUMN pipeline.stage_executions.cpu_usage_percent IS 'Uso promedio de CPU durante el stage';
+COMMENT ON COLUMN pipeline.stage_executions.metrics IS 'Métricas adicionales específicas del stage (quality_score, validations_passed, etc)';
+
+-- Índices
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_execution_id') THEN
+        CREATE INDEX idx_stage_executions_execution_id ON pipeline.stage_executions(execution_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_stage_name') THEN
+        CREATE INDEX idx_stage_executions_stage_name ON pipeline.stage_executions(stage_name);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_status') THEN
+        CREATE INDEX idx_stage_executions_status ON pipeline.stage_executions(status);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_duration') THEN
+        CREATE INDEX idx_stage_executions_duration ON pipeline.stage_executions(duration_seconds DESC);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_start_time') THEN
+        CREATE INDEX idx_stage_executions_start_time ON pipeline.stage_executions(start_time DESC);
     END IF;
 END $$;
 
@@ -291,6 +381,59 @@ BEGIN
     
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_expectation_type') THEN
         CREATE INDEX idx_validation_results_expectation_type ON pipeline.validation_results(expectation_type);
+    END IF;
+END $$;
+
+\echo '  ✓ Tabla y índices creados'
+
+-- ============================================
+-- Tabla: pipeline.validation_summary
+-- Resumen agregado de validaciones por suite
+-- ============================================
+
+\echo ''
+\echo '[*] Creando tabla pipeline.validation_summary...'
+
+CREATE TABLE IF NOT EXISTS pipeline.validation_summary (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    execution_id UUID NOT NULL REFERENCES pipeline.executions(id) ON DELETE CASCADE,
+    suite_name VARCHAR(255) NOT NULL,
+    dataset_name VARCHAR(255) NOT NULL,
+    total_validations INTEGER NOT NULL,
+    passed_validations INTEGER NOT NULL,
+    failed_validations INTEGER NOT NULL,
+    quality_score NUMERIC(5, 2) NOT NULL,
+    total_records INTEGER DEFAULT 0,
+    execution_time_ms INTEGER,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT validation_summary_totals_match CHECK (
+        total_validations = passed_validations + failed_validations
+    ),
+    CONSTRAINT validation_summary_unique UNIQUE (execution_id, suite_name, dataset_name)
+);
+
+COMMENT ON TABLE pipeline.validation_summary IS 'Resumen agregado de validaciones por suite y dataset - Reduce registros innecesarios';
+COMMENT ON COLUMN pipeline.validation_summary.quality_score IS 'Score de calidad calculado: (passed/total)*100';
+COMMENT ON COLUMN pipeline.validation_summary.execution_time_ms IS 'Tiempo de ejecución del suite en milisegundos';
+
+-- Índices
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_summary_execution_id') THEN
+        CREATE INDEX idx_validation_summary_execution_id ON pipeline.validation_summary(execution_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_summary_suite_name') THEN
+        CREATE INDEX idx_validation_summary_suite_name ON pipeline.validation_summary(suite_name);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_summary_quality_score') THEN
+        CREATE INDEX idx_validation_summary_quality_score ON pipeline.validation_summary(quality_score);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_summary_dataset_name') THEN
+        CREATE INDEX idx_validation_summary_dataset_name ON pipeline.validation_summary(dataset_name);
     END IF;
 END $$;
 
@@ -392,7 +535,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pipeline TO PUBLIC;
 \echo '============================================'
 \echo ''
 \echo 'Schema creado: pipeline'
-\echo 'Tablas creadas: 4 tablas (pipelines, executions, validation_results, audit_logs)'
+\echo 'Tablas creadas: 5 tablas (pipelines, executions, validation_results, validation_summary, audit_logs)'
 \echo ''
 \echo '✓ El script es idempotente y puede ejecutarse múltiples veces'
 \echo ''

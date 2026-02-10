@@ -1,277 +1,261 @@
 # Data Pipeline Framework
 
-Framework modular para pipelines de datos con validación de calidad, detección de vulnerabilidades de seguridad y reportes HTML profesionales.
+Framework production-ready para construir pipelines de datos con validación integral, escaneo de seguridad, seguimiento de auditoría y monitoreo de calidad.
 
----
+## Características
 
-## Instalación
+**Procesamiento de Datos:**
+- Ingesta multi-origen (CSV, JSON, PostgreSQL, datos sintéticos)
+- Transformación y enriquecimiento de datos
+- Salida multi-formato (CSV, Excel, Parquet, PostgreSQL)
+
+**Calidad y Seguridad:**
+- 40+ tipos de validación semántica
+- Detección de vulnerabilidades OWASP Top 10+
+- Verificaciones de cumplimiento (GDPR, PCI-DSS, HIPAA, SOC2)
+- Detección de outliers estadísticos
+- Validación cross-field
+
+**Auditoría y Monitoreo:**
+- Sistema de auditoría PostgreSQL con 6 tablas
+- Seguimiento de rendimiento a nivel de stage
+- Cálculo de quality score
+- Monitoreo de health status
+- Exportación CSV para análisis histórico
+
+**Reportes:**
+- Reportes HTML profesionales
+- Resúmenes ejecutivos
+- Resultados de validación detallados
+- Vulnerabilidades de seguridad
+- Métricas de rendimiento
+
+## Inicio Rápido
+
+### Instalación
 
 ```powershell
-# Ejecutar script de instalación automática (Windows)
+# Windows: Ejecutar setup automatizado
 .\setup.ps1
 ```
 
-Este script automáticamente:
-- ✅ Verifica dependencias (Python, Docker)
-- ✅ Instala paquetes de Python
-- ✅ Inicia PostgreSQL en Docker
-- ✅ Crea la base de datos `data_framework`
-- ✅ Inicializa todas las tablas
-- ✅ Genera datos de ejemplo (opcional)
+**El setup realiza:**
+- Verifica dependencias (Python 3.10+, Docker)
+- Instala paquetes Python
+- Inicia contenedor PostgreSQL
+- Inicializa schema de base de datos
+- Genera datos de ejemplo
+- Configura comando CLI global
 
-**Duración:** ~2-3 minutos
+**Duración:** 2-3 minutos
 
----
+### Activar Comando Global
 
-## 🗄️ Gestión de Base de Datos
+```powershell
+# Recargar perfil de PowerShell
+. $PROFILE
 
-Después de la instalación, usa `db_utils.py` para gestionar la base de datos:
-
-### Comandos Esenciales
-
-```bash
-# Ver estado de todas las tablas
-python scripts/db_utils.py status
-
-# Ver estadísticas del framework
-python scripts/db_utils.py stats
-
-# Ver últimas 10 ejecuciones
-python scripts/db_utils.py executions
-
-# Ver pipelines registrados
-python scripts/db_utils.py pipelines
-
-# Limpiar datos de ejemplo (mantiene auditoría)
-python scripts/db_utils.py clean-samples
-
-# Ver todas las opciones
-python scripts/db_utils.py --help
+# Verificar instalación
+data-framework --help
 ```
 
-**📚 Documentación completa:** [docs/DATABASE.md](docs/DATABASE.md) (gestión, queries SQL, schema)
-
----
-
-## 📖 Instalación Manual (Paso a Paso)
-
-Si prefieres instalación manual o estás en Linux/Mac:
-
-### Paso 1: Verificar Dependencias
-
-```bash
-# Verificar Python 3.10+
-python --version
-
-# Verificar Docker
-docker --version
-docker ps  # Debe estar corriendo
-```
-
-### Paso 2: Instalar Dependencias Python
-
-```bash
-pip install -r requirements.txt
-```
-
-### Paso 3: Iniciar Base de Datos
-
-```bash
-# Iniciar PostgreSQL con Docker
-docker-compose up -d postgres
-
-# Crear tablas
-docker exec -i framework_postgres psql -U admin -d data_framework < scripts/init_db.sql
-```
-
-**Verificar instalación:**
-```bash
-# Ver estado de la base de datos
-python scripts/db_utils.py status
-
-# Debe mostrar: 4 tablas en schema pipeline (vacías)
-```
-
-### Paso 4: Generar Datos de Ejemplo
-
-```bash
-# Generar datos sintéticos
-python scripts/generate_sample_data.py -c 10000 -t 50000
-
-# -c 10000  : 10,000 clientes
-# -t 50000  : 50,000 transacciones
-```
-
-**Salida esperada:**
-```
-✓ data/samples/customers.csv          (10,000 registros)
-✓ data/samples/transactions.csv       (50,000 transacciones)
-✓ sample_data.customers en PostgreSQL (10,000 registros)
-```
-
----
-
-## 🎯 Ejecución de Pipeline de Ejemplo
-
+### Ejecutar Tu Primer Pipeline
 
 ```bash
 # Ejecutar pipeline de ejemplo
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
-```
+data-framework run pipeline -c examples/complete_pipeline.yml
 
-**El pipeline ejecuta:**
-
-1. **INGESTION** - Carga datos desde múltiples fuentes (CSV, Excel, Parquet, PostgreSQL, JSON)
-
-2. **VALIDATION** - Sistema de validación production-ready completo
-   - **40+ tipos semánticos**: uuid, email, phone, ssn, credit_card, iban, ipv4, url, name, text, enum, date, etc.
-   - **Seguridad OWASP Top 10+**: SQL injection, XSS, Command injection, NoSQL, LDAP, XPath, YAML, Template (SSTI), CSV injection, XXE, SSRF, Path traversal, File inclusion, CRLF injection
-   - **Data Leakage**: API keys (AWS, GitHub, Google, Slack), Private keys (RSA, SSH), JWT tokens, Passwords, Connection strings
-   - **Compliance**: GDPR (PII detection), PCI-DSS (credit card protection), HIPAA (medical records), SOC2 (debug leakage)
-   - **Calidad de datos**: Outliers estadísticos (Z-score), distribuciones, quantiles, anti-patterns (test values, placeholders)
-   - **Integridad**: Cross-field validation (date ranges, conditional required, sum equals, unique combinations)
-   - **Reglas de negocio**: Minimum records, percentage in category, monotonic trends, referential integrity
-
-3. **TRANSFORMATION** - Filtrado, limpieza y enriquecimiento de datos
-
-4. **OUTPUT** - Exportación en múltiples formatos (CSV, Excel, Parquet, PostgreSQL)
-
-> **💡 Validación Simplificada:** En lugar de escribir expectativas verbosas, define tipos de columna (`email`, `phone_es`, `credit_card`, etc.) y el framework genera automáticamente 100+ validaciones de calidad, seguridad y compliance. **80% menos código**, **10x más validaciones**. Ver [docs/VALIDATION_TYPES.md](docs/VALIDATION_TYPES.md) para los 40+ tipos disponibles.
-
-**Salida esperada:**
-```
-Execution completed
-  Status: completed
-  Duration: 8.61s
-  Records: 60,000
-  Report: reports/execution_XXXXX_YYYYMMDD_HHMMSS.html
-```
-
-### Ver Resultados
-
-```bash
-# Ver estado de la base de datos
-python scripts/db_utils.py status
-
-# Debe mostrar:
-# - pipeline.executions: 1 registro (tu ejecución)
-# - pipeline.validation_results: 33 registros (una por expectativa)
-# - sample_data.customers_processed: ~8,000 registros (filtrados)
-```
-
-### Abrir Reporte HTML
-
-
-
-```bash
-# Abrir el reporte más reciente
+# Ver resultados
 start reports\execution_*.html
 ```
 
-**El reporte incluye:**
-- ✅ Executive Summary (Status, Duration, Records, Quality Score)
-- 📊 Validation Results (Passed/Failed por suite)
-- 🔍 Tabla detallada de fallos (con columnas, patrones y porcentajes)
-- 🚨 Vulnerabilidades detectadas con severidad
-- ⚙️ Pipeline stages con métricas
+## Comandos CLI
 
----
+### run pipeline
 
-## 🗄️ Base de Datos PostgreSQL
-
-### Schemas Principales
-
-- **`pipeline`** - Auditoría y métricas
-  - `pipelines` - Registro de pipelines
-  - `executions` - Historial de ejecuciones
-  - `validation_results` - Resultados de validaciones
-  - `audit_logs` - Logs detallados
-
-- **`sample_data`** - Datos procesados
-  - `customers` - Datos de ejemplo
-  - `customers_processed` - Output del pipeline
-
-> **📚 Gestión avanzada:** Para comandos de administración, queries SQL y troubleshooting, ver [docs/DATABASE.md](docs/DATABASE.md)
-
----
-
-## 🎯 Workflows Comunes
-
-### A. Workflow Básico (Datos Limpios)
-
-Prueba el pipeline con datos sin vulnerabilidades:
+Ejecuta data pipeline desde configuración YAML.
 
 ```bash
-# 1. Generar datos
-python scripts/generate_samples.py
-
-# 2. Ejecutar pipeline (usa data/samples/customers.csv por defecto)
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
-
-# 3. Ver reporte
-start reports\execution_*.html
+data-framework run pipeline -c <config_file>
 ```
 
-**Resultado esperado:** Quality Score 100%, 0 vulnerabilidades
+**Stages del pipeline:**
+1. **INGESTION** - Carga datos de múltiples fuentes
+2. **VALIDATION** - Verificaciones de calidad y escaneo de seguridad
+3. **TRANSFORMATION** - Limpieza y enriquecimiento de datos
+4. **OUTPUT** - Exporta a múltiples formatos
 
----
+### export-logs
 
-### B. Workflow con Testing de Seguridad (Datos Infectados)
-
-Prueba la detección de vulnerabilidades OWASP:
+Exporta métricas de auditoría a archivos CSV.
 
 ```bash
-# 1. Generar datos limpios
-python scripts/generate_samples.py
-
-# 2. Infectar datos con vulnerabilidades
-python -m src.cli infect -c examples/infection_config.yml
-
-# 3. Cambiar el pipeline para usar datos infectados
-# Editar examples/complete_pipeline.yml línea 20:
-#   path: "data/output/customers_infected.csv"
-
-# 4. Ejecutar pipeline
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
-
-# 5. Ver reporte con vulnerabilidades detectadas
-start reports\execution_*.html
+data-framework export-logs -n <pipeline_name> [-o <output_dir>]
 ```
 
-**Resultado esperado:** Quality Score ~23%, 3+ vulnerabilidades detectadas
+**Genera 6 archivos CSV:**
+- `executions_summary.csv` - Historial de ejecuciones
+- `stages_performance.csv` - Métricas de stages
+- `validation_quality.csv` - Quality scores por suite
+- `validation_failures.csv` - Registros detallados de fallos
+- `timeline.csv` - Timeline cronológico de ejecuciones
+- `errors_analysis.csv` - Agregación de errores
 
----
+**Casos de uso:**
+- Optimización de rendimiento
+- Análisis de tendencias de calidad
+- Análisis de causa raíz de fallos
+- Reportes de cumplimiento
 
-## 🔧 Configuración de Pipeline (YAML)
+### infect
+
+Inyecta vulnerabilidades para testing de seguridad.
+
+```bash
+data-framework infect -c examples/infection_config.yml
+```
+
+**Inyecta 10 tipos de ataques:**
+- SQL injection
+- Ataques XSS
+- Command injection
+- NoSQL injection
+- Path traversal
+- Data leakage (SSN, tarjetas de crédito, API keys)
+- Outliers estadísticos
+- Datos faltantes
+- Registros duplicados
+- Corrupción de formato
+
+## Arquitectura
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌────────────┐
+│  Ingestion  │────▶│  Validation  │────▶│ Transformation  │────▶│   Output   │
+└─────────────┘     └──────────────┘     └─────────────────┘     └────────────┘
+       │                    │                      │                     │
+       └────────────────────┴──────────────────────┴─────────────────────┘
+                                      │
+                            ┌─────────▼─────────┐
+                            │  Audit System     │
+                            │  (PostgreSQL)     │
+                            └───────────────────┘
+```
+
+**Componentes principales:**
+- **Pipeline Executor** - Orquestación de stages y manejo de errores
+- **Ingestion Module** - Conectores multi-origen (CSV, JSON, PostgreSQL)
+- **Validation Module** - Verificaciones de calidad, seguridad y cumplimiento
+- **Transformation Module** - Filtrado y enriquecimiento de datos
+- **Audit System** - Seguimiento PostgreSQL con 6 tablas
+- **Reporting Module** - Generación de reportes HTML profesionales
+
+Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para detalles.
+
+## Sistema de Auditoría
+
+Sistema de auditoría basado en PostgreSQL que rastrea:
+- Historial de ejecución de pipelines
+- Métricas de rendimiento a nivel de stage
+- Resultados de validación y quality scores
+- Monitoreo de health status
+- Logs de errores y advertencias
+
+**Schema de base de datos: `pipeline`**
+
+**Tablas:**
+1. `pipelines` - Registro de pipelines
+2. `executions` - Historial de ejecuciones con métricas de calidad
+3. `validation_summary` - Métricas de validación agregadas
+4. `validation_results` - Fallos de validación detallados
+5. `stage_executions` - Seguimiento granular de stages
+6. `audit_logs` - Logs de eventos
+
+**Seguimiento de health status:**
+- `healthy`: quality_score ≥ 95%, sin errores
+- `warning`: quality_score ≥ 80% o advertencias presentes
+- `critical`: quality_score < 80% o errores presentes
+- `failed`: ejecución de pipeline falló
+
+Ver [docs/AUDIT_SYSTEM.md](docs/AUDIT_SYSTEM.md) para schema y API.
+
+## Sistema de Validación
+
+Validación production-ready que cubre:
+
+**Calidad de Datos:**
+- Completitud (required, mostly, null checks)
+- Unicidad (unique, compound unique)
+- Precisión (formatos, patrones, rangos)
+- Consistencia (validación cross-field)
+- Outliers estadísticos (Z-score, quantiles)
+
+**Seguridad (OWASP Top 10+):**
+- SQL injection, NoSQL injection, LDAP injection
+- XSS (cross-site scripting)
+- Command injection, YAML injection, template injection
+- Path traversal, file inclusion
+- XXE (XML external entity), SSRF (server-side request forgery)
+- Data leakage (API keys, private keys, JWT tokens, passwords)
+
+**Cumplimiento:**
+- GDPR (detección y protección de PII)
+- PCI-DSS (seguridad de datos de tarjetas de crédito)
+- HIPAA (protección de registros médicos)
+- SOC2 (prevención de fuga de información de debug)
+
+**40+ Tipos Semánticos:**
+- Identificadores: `uuid`, `id`
+- Contacto: `email`, `phone_es`, `phone_us`, `phone`
+- PII: `ssn`, `dni`, `passport`
+- Financiero: `credit_card`, `iban`, `currency`, `amount`
+- Dirección: `postal_code_es`, `postal_code_us`, `country_code`
+- Web: `url`, `url_secure`, `ipv4`, `ipv6`, `domain`
+- Texto: `name`, `text`, `slug`, `alphanumeric`, `enum`
+- Numérico: `integer`, `numeric`, `percentage`, `latitude`, `longitude`
+- Fecha: `date`, `datetime`, `timestamp`, `year`
+- Booleano: `boolean`
+
+Ver [docs/VALIDATION_SYSTEM.md](docs/VALIDATION_SYSTEM.md) para referencia completa.
+
+## Configuración
+
+Configuración de pipeline usando YAML:
 
 ```yaml
 pipeline:
   name: "CustomerDataPipeline"
-  description: "Pipeline completo con validación de seguridad"
+  description: "Procesamiento de datos de clientes con validación"
 
 ingestion:
   sources:
     - name: "customers_csv"
       type: "csv"
-      path: "data/output/customers_infected.csv"
+      path: "data/samples/customers.csv"
       output_dataset: "raw_customers"
 
 validation:
   great_expectations:
     - dataset: "raw_customers"
       suites:
-        - name: "basic_quality_suite"
+        - name: "01_Schema_Validation"
+          expectations:
+            - expectation_type: "expect_table_columns_to_match_set"
+              column_set: ["id", "name", "email", "phone"]
+        
+        - name: "02_Data_Quality"
           expectations:
             - expectation_type: "expect_column_values_to_not_be_null"
-              column: "customer_id"
+              column: "name"
             - expectation_type: "expect_column_values_to_be_unique"
               column: "email"
         
-        - name: "security_detection_suite"
+        - name: "03_Security_OWASP"
           expectations:
             - expectation_type: "expect_column_values_to_not_match_regex"
               column: "name"
-              regex: "(?:PRIVATE.*KEY|api.*key|secret|token|password)"
+              regex: "(?i)(\\bOR\\b.*=.*|;.*DROP|<script)"
+              severity: "critical"
 
 transformation:
   steps:
@@ -280,232 +264,298 @@ transformation:
       output_dataset: "active_customers"
       operations:
         - type: "filter"
-          condition: "account_status == 'active'"
-    
-    - name: "enrich_data"
-      dataset: "active_customers"
-      output_dataset: "enriched_customers"
-      operations:
-        - type: "derive"
-          new_column: "customer_segment"
-          expression: "'VIP' if lifetime_value > 10000 else 'Regular'"
-        - type: "transform"
-          column: "name"
-          expression: "str.title()"
+          condition: "status == 'active'"
 
 outputs:
   - name: "export_csv"
     type: "csv"
-    dataset: "enriched_customers"
-    path: "data/output/active_customers.csv"
-  
-  - name: "export_excel"
-    type: "excel"
-    dataset: "enriched_customers"
-    path: "data/output/customers_enriched.xlsx"
+    dataset: "active_customers"
+    path: "data/output/customers_active.csv"
   
   - name: "save_postgres"
     type: "postgres"
-    dataset: "enriched_customers"
+    dataset: "active_customers"
     table: "sample_data.customers_processed"
     mode: "replace"
 ```
 
-Ver ejemplo completo: [examples/complete_pipeline.yml](examples/complete_pipeline.yml)
+Ver [examples/complete_pipeline.yml](examples/complete_pipeline.yml) para ejemplo completo.
 
----
+## Gestión de Base de Datos
 
-## 🦠 Módulo de Infección
-
-Simula 10 tipos de ataques basados en OWASP Top 10:
-
-| Ataque | Ejemplo | Detección |
-|--------|---------|-----------|
-| Data Poisoning | `<script>alert('XSS')</script>` | XSS regex patterns |
-| SQL Injection | `' OR '1'='1` | SQL keywords detection |
-| Command Injection | `; rm -rf /` | Shell operators |
-| NoSQL Injection | `{"$ne": null}` | NoSQL operators |
-| Path Traversal | `../../etc/passwd` | Path manipulation |
-| Data Leakage | SSN: `123-45-6789` | PII pattern matching |
-| Outliers | Valores 1000x normales | Statistical analysis |
-| Missing Data | Strategic nulls | Completeness checks |
-| Duplicates | Exact duplicates | Uniqueness validation |
-| Format Corruption | Invalid encoding | Format validation |
-
-**Uso:**
-```bash
-python -m src.modules.data_infection.infector <input.csv> <output_infected.csv> [--infection-rate 0.1]
-```
-
----
-
-## 💻 Comandos CLI
+### Verificación de Estado
 
 ```bash
-# Ejecutar pipeline desde configuración YAML
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
-
-# Infectar datos con vulnerabilidades para testing
-python -m src.cli infect -c examples/infection_config.yml
-
-# Generar datos sintéticos
-python scripts/generate_sample_data.py -c 10000 -t 50000
+# Ver estado de tablas
+python scripts/db_utils.py status
 ```
 
----
+**Salida:**
+```
+================================================================================
+  DATABASE STATUS - data_framework
+================================================================================
 
-## 📁 Estructura del Proyecto
+  Schema: PIPELINE
+  ----------------------------------------------------------------------------
+  [OK]     pipelines                                1 rows  |     80 kB
+  [OK]     executions                               4 rows  |     80 kB
+  [OK]     validation_results                      33 rows  |     80 kB
+  [OK]     validation_summary                       4 rows  |     72 kB
+  [OK]     stage_executions                        12 rows  |     72 kB
+  [EMPTY]  audit_logs                               0 rows  |     72 kB
+
+  Schema: SAMPLE_DATA
+  ----------------------------------------------------------------------------
+  [OK]     customers                           10,000 rows  |   2144 kB
+  [OK]     customers_processed                  8,038 rows  |   1856 kB
+
+================================================================================
+  TOTAL: 18,092 registros
+================================================================================
+```
+
+### Comandos Comunes
+
+```bash
+# Ver ejecuciones de pipeline
+python scripts/db_utils.py executions
+
+# Ver pipelines registrados
+python scripts/db_utils.py pipelines
+
+# Ver estadísticas de base de datos
+python scripts/db_utils.py stats
+
+# Limpiar datos de ejemplo
+python scripts/db_utils.py clean-samples
+```
+
+Ver [docs/DATABASE.md](docs/DATABASE.md) para referencia completa.
+
+## Rendimiento
+
+**Ejecución típica (10K registros):**
+- INGESTION: 0.3-0.6s
+- VALIDATION: 1.5-12s (80-95% del tiempo total)
+- TRANSFORMATION: 0.1-0.5s
+- OUTPUT: 0.2-0.5s
+
+**Huella de memoria:** <100MB
+
+**Optimización:**
+- Reducir cantidad de suites de validación para ejecución más rápida
+- Usar muestreo para datasets grandes
+- Habilitar modo batch para escrituras de auditoría
+- Indexar columnas de auditoría consultadas frecuentemente
+
+## Estructura del Proyecto
 
 ```
 data-pipeline-framework/
 ├── src/
-│   ├── cli.py                          # CLI principal
-│   ├── pipeline_executor.py            # Orquestador de pipeline
-│   ├── config.py                       # Configuración global
+│   ├── cli.py                      # Punto de entrada CLI
+│   ├── pipeline_executor.py        # Orquestación del pipeline
+│   ├── config.py                   # Configuración
 │   └── modules/
-│       ├── data_infection/             # Módulo de infección
-│       │   ├── infector.py            # Inyección de ataques
-│       │   └── attack_types.py        # 10 tipos de ataques
-│       ├── ingestion/                  # Conectores de datos
-│       │   ├── multi_source_loader.py # Loader principal
-│       │   └── connectors/
-│       │       ├── csv_connector.py
-│       │       ├── postgres_connector.py
-│       │       └── json_connector.py
-│       ├── validation/                 # Validación de calidad
-│       │   ├── pandera_validator.py   # Schema validation
-│       │   └── ge_validator.py        # Great Expectations
-│       ├── transformation/             # Transformaciones
-│       │   └── transformer.py
-│       ├── auditing/                   # Auditoría PostgreSQL
-│       │   └── audit_manager.py
-│       ├── monitoring/                 # Métricas en memoria
-│       │   └── collector.py
-│       └── reporting/                  # Reportes HTML
-│           └── html_generator.py      # Generador de reportes
-│
+│       ├── data_infection/         # Inyección de vulnerabilidades
+│       ├── ingestion/              # Conectores de datos
+│       │   └── connectors/         # CSV, JSON, PostgreSQL
+│       ├── validation/             # Validación de calidad
+│       ├── transformation/         # Transformación de datos
+│       ├── auditing/               # Sistema de auditoría
+│       │   ├── audit_manager.py   # API de auditoría
+│       │   └── log_exporter.py    # Exportación CSV
+│       ├── monitoring/             # Recolección de métricas
+│       └── reporting/              # Reportes HTML
+├── docs/
+│   ├── ARCHITECTURE.md             # Arquitectura del sistema
+│   ├── AUDIT_SYSTEM.md             # Schema de base de datos de auditoría
+│   ├── CLI_REFERENCE.md            # Referencia de comandos
+│   ├── DATABASE.md                 # Gestión de base de datos
+│   ├── EXPORT_LOGS.md              # Guía de exportación de logs
+│   └── VALIDATION_SYSTEM.md        # Tipos de validación
 ├── examples/
-│   └── complete_pipeline.yml           # Configuración completa
-│
+│   ├── complete_pipeline.yml       # Ejemplo de pipeline completo
+│   └── infection_config.yml        # Configuración de inyección de ataques
 ├── scripts/
-│   ├── init_db.sql                     # Schema PostgreSQL
-│   ├── db_utils.py                     # Utilidades de base de datos
-│   └── generate_sample_data.py         # Generador de datos sintéticos
-│
+│   ├── init_db.sql                 # Inicialización de base de datos
+│   ├── db_utils.py                 # Utilidades de base de datos
+│   └── generate_sample_data.py     # Generador de datos de ejemplo
 ├── data/
-│   ├── samples/                        # Datos de ejemplo
-│   │   ├── customers.csv
-│   │   └── transactions.csv
-│   └── output/                         # Datos procesados
-│       ├── customers_infected.csv
-│       ├── active_customers.csv
-│       ├── customers_enriched.xlsx
-│       └── customers_enriched.parquet
-│
-├── reports/                            # Reportes HTML generados
-│   └── execution_XXXXX_YYYYMMDD.html
-│
-├── docker-compose.yml                  # PostgreSQL container
-├── requirements.txt                    # Dependencias Python
-└── README.md                          # 📖 Esta guía
+│   ├── samples/                    # Datasets de ejemplo
+│   └── output/                     # Resultados de procesamiento
+├── reports/                        # Reportes HTML
+├── logs/                           # Logs CSV exportados
+├── docker-compose.yml              # Contenedor PostgreSQL
+└── requirements.txt                # Dependencias Python
 ```
 
----
+## Flujos de Trabajo
 
-## 🎯 Características
+### Flujo Básico (Datos Limpios)
 
-### Ingestion
-- Conectores para múltiples fuentes (CSV, Excel, Parquet, PostgreSQL, JSON)
-- Configuración mediante YAML
-
-### Validation
-- Great Expectations: 39 expectativas en 4 suites
-- Pandera: Validación de esquema
-- Detección de vulnerabilidades OWASP Top 10
-- Cálculo automático de quality score
-
-### Security Detection
-- SQL Injection
-- XSS (Cross-Site Scripting)
-- Command Injection
-- NoSQL Injection
-- LDAP Injection
-- XML External Entities
-- Path Traversal
-- Data Leakage (SSN, API keys, passwords)
-
-### Transformation
-- Filtrado con condiciones SQL-like
-- Creación de columnas derivadas
-- Operaciones de string
-- Normalización de datos
-
-### Reporting
-- Reportes HTML profesionales
-- Executive summary con métricas clave
-- Detalles de validaciones
-- Indicadores de severidad
-
-### Auditing
-- Persistencia en PostgreSQL
-- Historial completo de ejecuciones
-- Resultados de validación detallados
-
----
-
-## 🚀 Performance
-
-| Métrica | Valor |
-|---------|-------|
-| Ejecución completa | ~2.5s |
-| Ingestion (1030 records) | ~0.3s |
-| Validation (39 checks) | ~1.5s |
-| Transformation | ~0.2s |
-| Output (4 formatos) | ~0.5s |
-| Memory footprint | < 100MB |
-
----
-
-## 🛠️ Troubleshooting
-
-### Error: "Connection refused" PostgreSQL
 ```bash
-# Verificar que el contenedor está corriendo
+# 1. Generar datos de ejemplo
+python scripts/generate_sample_data.py -c 10000 -t 50000
+
+# 2. Ejecutar pipeline
+data-framework run pipeline -c examples/complete_pipeline.yml
+
+# 3. Ver reporte HTML
+start reports\execution_*.html
+```
+
+**Esperado:** Quality score 100%, 0 vulnerabilidades
+
+### Flujo de Testing de Seguridad
+
+```bash
+# 1. Generar datos limpios
+python scripts/generate_sample_data.py
+
+# 2. Inyectar vulnerabilidades
+data-framework infect -c examples/infection_config.yml
+
+# 3. Actualizar configuración del pipeline para usar datos infectados
+# Editar examples/complete_pipeline.yml:
+#   path: "data/output/customers_infected.csv"
+
+# 4. Ejecutar pipeline de validación
+data-framework run pipeline -c examples/complete_pipeline.yml
+
+# 5. Revisar hallazgos de seguridad
+start reports\execution_*.html
+```
+
+**Esperado:** Quality score ~23%, 3+ vulnerabilidades detectadas
+
+### Flujo de Análisis de Rendimiento
+
+```bash
+# 1. Ejecutar pipeline
+data-framework run pipeline -c examples/complete_pipeline.yml
+
+# 2. Exportar métricas
+data-framework export-logs -n CustomerDataPipeline -o analysis/
+
+# 3. Analizar cuellos de botella
+# Abrir analysis/stages_performance.csv
+# Ordenar por duration_seconds DESC para identificar stages más lentos
+```
+
+## Instalación Manual
+
+Alternativa al `setup.ps1` automatizado:
+
+### Prerrequisitos
+
+```bash
+# Verificar Python 3.10+
+python --version
+
+# Verificar Docker
+docker --version
+docker ps
+```
+
+### Instalar Dependencias
+
+```bash
+pip install -r requirements.txt
+```
+
+### Iniciar PostgreSQL
+
+```bash
+# Iniciar contenedor
+docker-compose up -d postgres
+
+# Inicializar schema
+docker exec -i framework_postgres psql -U admin -d data_framework < scripts/init_db.sql
+
+# Verificar
+python scripts/db_utils.py status
+```
+
+### Generar Datos de Ejemplo
+
+```bash
+python scripts/generate_sample_data.py -c 10000 -t 50000
+```
+
+**Salida:**
+- `data/samples/customers.csv` (10,000 registros)
+- `data/samples/transactions.csv` (50,000 registros)
+- PostgreSQL: `sample_data.customers` (10,000 registros)
+
+## Solución de Problemas
+
+### Comando No Encontrado
+
+**Error:** `data-framework : The term 'data-framework' is not recognized`
+
+**Solución:**
+```powershell
+# Recargar perfil de PowerShell
+. $PROFILE
+
+# O usar método tradicional
+.venv\Scripts\Activate.ps1
+python -m src.cli run pipeline -c examples/pipeline.yml
+```
+
+### Error de Conexión a Base de Datos
+
+**Error:** `psycopg2.OperationalError: could not connect to server`
+
+**Solución:**
+```bash
+# Verificar estado del contenedor
 docker ps | findstr postgres
+
+# Iniciar si no está corriendo
+docker-compose up -d postgres
 
 # Ver logs
 docker logs framework_postgres
 ```
 
-**Solución:** Ejecutar `setup.ps1` o iniciar manualmente con `docker-compose up -d postgres`
+### Error de Configuración del Pipeline
 
-### Error: "File not found" al ejecutar pipeline
-Verificar que las rutas en el YAML son relativas al directorio raíz. Generar datos si faltan:
+**Error:** `yaml.scanner.ScannerError: mapping values are not allowed here`
+
+**Solución:**
+- Validar sintaxis YAML
+- Verificar indentación (usar espacios, no tabs)
+- Entrecomillar caracteres especiales
+- Referirse a [examples/complete_pipeline.yml](examples/complete_pipeline.yml)
+
+### Sin Datos de Exportación
+
+**Salida:** `✓ executions_summary: 0 rows`
+
+**Solución:**
 ```bash
-python scripts/generate_sample_data.py
+# Ejecutar pipeline primero
+data-framework run pipeline -c examples/complete_pipeline.yml
+
+# Luego exportar
+data-framework export-logs -n CustomerDataPipeline
 ```
 
-### Error: "Great Expectations validation failed"
-Los warnings son esperados cuando hay problemas en los datos. Ver reporte HTML para análisis visual:
-```bash
-start reports\execution_*.html
-```
+## Documentación
 
-### Pipeline muy lento
-- Reducir número de validaciones en el YAML
-- Usar datos de muestra más pequeños
-- Verificar que PostgreSQL no está sobrecargado
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Arquitectura del sistema y flujo de datos
+- **[AUDIT_SYSTEM.md](docs/AUDIT_SYSTEM.md)** - Schema de base de datos y API de auditoría
+- **[CLI_REFERENCE.md](docs/CLI_REFERENCE.md)** - Referencia completa de comandos
+- **[DATABASE.md](docs/DATABASE.md)** - Gestión de base de datos y queries
+- **[EXPORT_LOGS.md](docs/EXPORT_LOGS.md)** - Guía de exportación y análisis de logs
+- **[VALIDATION_SYSTEM.md](docs/VALIDATION_SYSTEM.md)** - Tipos de validación y configuración
 
-### Problemas con base de datos
-Ver [docs/DATABASE.md](docs/DATABASE.md) para troubleshooting específico y optimización.
+## Requisitos
 
----
-
-## 📚 Documentación
-
-- **[docs/DATABASE.md](docs/DATABASE.md)** - Gestión de base de datos, queries SQL, troubleshooting
-- **[docs/VALIDATION_TYPES.md](docs/VALIDATION_TYPES.md)** - Tipos de validación simplificada (uuid, email, phone, etc.)
-- **[Great Expectations](https://docs.greatexpectations.io/)** - Documentación oficial de validaciones
-- **[Pandera](https://pandera.readthedocs.io/)** - Documentación oficial de schemas
-- **[OWASP Top 10](https://owasp.org/www-project-top-ten/)** - Vulnerabilidades de seguridad
-
+- Python 3.10+
+- Docker (para PostgreSQL)
+- 512MB RAM mínimo
+- 1GB espacio en disco
