@@ -1,0 +1,26 @@
+# Asegurar line endings correctos para scripts bash
+docker/data-framework text eol=lf
+
+# Scripts de inicio
+airflow/dags/*.py text eol=lf
+
+# Archivos de configuración
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Scripts PowerShell
+*.ps1 text eol=crlf
+
+# Scripts Python
+*.py text eol=lf
+
+# Archivos de texto
+*.md text eol=lf
+*.txt text eol=lf
+
+# ENV files
+.env* text eol=lf
+
+# SQL files
+*.sql text eol=lf

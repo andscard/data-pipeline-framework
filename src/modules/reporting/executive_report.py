@@ -1,6 +1,6 @@
 """
-Executive Report Generator - Reporte Gerencial
-Enfocado en métricas de alto nivel para stakeholders ejecutivos
+Executive Report Generator - Reporte Gerencial Corporativo
+Diseño profesional y sobrio para stakeholders ejecutivos
 """
 
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutiveReportGenerator:
-    """Generador de reportes ejecutivos para gerencia y stakeholders"""
+    """Generador de reportes ejecutivos corporativos"""
     
     def generate_report(
         self,
@@ -41,7 +41,6 @@ class ExecutiveReportGenerator:
         pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
         start_time = monitoring.get('start_time', 'N/A')
         
-        # Métricas principales
         health_status = monitoring.get('health_status', 'unknown')
         duration = monitoring.get('total_duration', 0)
         records = monitoring.get('total_records_processed', 0)
@@ -49,12 +48,11 @@ class ExecutiveReportGenerator:
         
         validation_stage = stages.get('VALIDATION', {})
         quality_score = validation_stage.get('quality_score', 0)
+        validations_passed = validation_stage.get('validations_passed', 0)
+        validations_failed = validation_stage.get('validations_failed', 0)
         
-        # KPIs
-        status_color = self._get_status_color(health_status)
+        status_class = self._get_status_class(health_status)
         quality_status = self._get_quality_status(quality_score)
-        
-        # Cálculos de rendimiento
         throughput = records / duration if duration > 0 else 0
         
         return f"""<!DOCTYPE html>
@@ -64,491 +62,448 @@ class ExecutiveReportGenerator:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Executive Report - {pipeline_name}</title>
     <style>
-{self._get_executive_css()}
+{self._get_css()}
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header Ejecutivo -->
         <header class="header">
-            <div class="logo-area">
+            <div class="header-left">
                 <div class="logo">📊</div>
                 <div>
-                    <h1>Data Pipeline</h1>
-                    <p>Executive Summary Report</p>
+                    <h1>Pipeline Execution Report</h1>
+                    <p>{pipeline_name} • {start_time[:19]}</p>
                 </div>
             </div>
-            <div class="date-info">
-                <div>{start_time}</div>
-                <div style="font-size: 0.85em; opacity: 0.8;">Execution ID: {execution_id}</div>
+            <div class="header-right">
+                <span class="badge {status_class}">{health_status.upper()}</span>
             </div>
         </header>
         
-        <!-- KPIs Principales -->
-        <section class="kpi-section">
-            <div class="kpi-card {status_color}">
-                <div class="kpi-icon">🎯</div>
-                <div class="kpi-value">{health_status.upper()}</div>
-                <div class="kpi-label">Pipeline Status</div>
-            </div>
-            
-            <div class="kpi-card accent">
-                <div class="kpi-icon">✓</div>
-                <div class="kpi-value">{quality_score:.1f}%</div>
+        <section class="kpis">
+            <div class="kpi">
                 <div class="kpi-label">Quality Score</div>
-                <div class="kpi-sublabel">{quality_status}</div>
+                <div class="kpi-value">{quality_score:.1f}%</div>
+                <div class="kpi-sub {self._get_quality_class(quality_score)}">{quality_status}</div>
             </div>
-            
-            <div class="kpi-card">
-                <div class="kpi-icon">📦</div>
+            <div class="kpi">
+                <div class="kpi-label">Records</div>
                 <div class="kpi-value">{records:,}</div>
-                <div class="kpi-label">Records Processed</div>
+                <div class="kpi-sub">{duration:.1f}s total</div>
             </div>
-            
-            <div class="kpi-card">
-                <div class="kpi-icon">⏱️</div>
-                <div class="kpi-value">{duration:.2f}s</div>
-                <div class="kpi-label">Total Duration</div>
-                <div class="kpi-sublabel">{throughput:,.0f} rec/sec</div>
+            <div class="kpi">
+                <div class="kpi-label">Throughput</div>
+                <div class="kpi-value">{throughput:,.0f}</div>
+                <div class="kpi-sub">rec/sec</div>
             </div>
-        </section>
-        
-        <!-- Performance Overview -->
-        <section class="performance-section">
-            <h2>Performance Overview</h2>
-            <div class="metrics-grid">
-                {self._render_stage_metrics(stages)}
+            <div class="kpi">
+                <div class="kpi-label">Validations</div>
+                <div class="kpi-value">{validations_passed}/{validations_passed + validations_failed}</div>
+                <div class="kpi-sub {'error' if validations_failed > 0 else 'success'}">{validations_failed} failed</div>
             </div>
         </section>
         
-        <!-- Quality Insights -->
-        <section class="insights-section">
-            <h2>Quality Insights</h2>
-            {self._render_quality_insights(validation_stage)}
+        <section class="flow">
+            <h2>Pipeline Flow</h2>
+            {self._render_flow(stages)}
         </section>
         
-        <!-- Recommendations -->
-        <section class="recommendations-section">
-            <h2>Recommendations</h2>
-            {self._render_recommendations(monitoring)}
+        <section class="metrics">
+            <h2>Performance Metrics</h2>
+            {self._render_metrics_table(stages, monitoring)}
         </section>
         
-        <!-- Footer -->
+        <section class="summary">
+            <h2>Executive Summary</h2>
+            {self._render_summary(validation_stage, monitoring, stages)}
+        </section>
+        
         <footer class="footer">
-            <p>Data Pipeline Framework | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p style="font-size: 0.85em; opacity: 0.7;">Confidential - For Internal Use Only</p>
+            <p>Data Pipeline Framework • Execution ID: {execution_id} • Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </footer>
     </div>
 </body>
 </html>"""
     
-    def _get_executive_css(self) -> str:
-        """CSS profesional para reporte ejecutivo"""
+    def _get_css(self) -> str:
         return """
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #f5f7fa;
             padding: 20px;
+            color: #2c3e50;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
             background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
         }
         
         /* Header */
         .header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 40px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 30px 40px;
+            background: #2c3e50;
+            color: white;
+            border-bottom: 3px solid #34495e;
         }
         
-        .logo-area {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
+        .header-left { display: flex; align-items: center; gap: 15px; }
         .logo {
-            font-size: 3em;
-            background: rgba(255,255,255,0.2);
-            width: 80px;
-            height: 80px;
+            font-size: 2em;
+            width: 50px;
+            height: 50px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
         }
+        .header h1 { font-size: 1.5em; font-weight: 600; margin-bottom: 5px; }
+        .header p { font-size: 0.9em; opacity: 0.85; }
         
-        .header h1 {
-            font-size: 2em;
-            font-weight: 700;
-            margin-bottom: 5px;
+        .badge {
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
+        .badge.healthy { background: #27ae60; color: white; }
+        .badge.warning { background: #f39c12; color: white; }
+        .badge.critical { background: #e74c3c; color: white; }
         
-        .header p {
-            font-size: 0.95em;
-            opacity: 0.9;
-        }
-        
-        .date-info {
-            text-align: right;
-            font-size: 0.95em;
-        }
-        
-        /* KPI Section */
-        .kpi-section {
+        /* KPIs */
+        .kpis {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            padding: 40px;
-            background: #f8f9fa;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            background: #e0e6ed;
+            border-bottom: 1px solid #e0e6ed;
         }
         
-        .kpi-card {
+        .kpi {
             background: white;
-            padding: 30px;
-            border-radius: 12px;
+            padding: 25px 20px;
             text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            transition: transform 0.3s;
-        }
-        
-        .kpi-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        }
-        
-        .kpi-icon {
-            font-size: 2.5em;
-            margin-bottom: 15px;
-        }
-        
-        .kpi-value {
-            font-size: 2.5em;
-            font-weight: 700;
-            color: #1e3c72;
-            margin-bottom: 10px;
         }
         
         .kpi-label {
-            font-size: 0.9em;
-            color: #6c757d;
+            font-size: 0.8em;
+            color: #7f8c8d;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
             font-weight: 600;
         }
         
-        .kpi-sublabel {
-            font-size: 0.85em;
-            color: #6c757d;
-            margin-top: 8px;
+        .kpi-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
         }
         
-        .kpi-card.success { border-left: 5px solid #28a745; }
-.kpi-card.success .kpi-value { color: #28a745; }
-        
-        .kpi-card.warning { border-left: 5px solid #ffc107; }
-        .kpi-card.warning .kpi-value { color: #ffc107; }
-        
-        .kpi-card.danger { border-left: 5px solid #dc3545; }
-        .kpi-card.danger .kpi-value { color: #dc3545; }
-        
-        .kpi-card.accent { border-left: 5px solid #667eea; }
-        .kpi-card.accent .kpi-value { color: #667eea; }
+        .kpi-sub {
+            font-size: 0.85em;
+            color: #95a5a6;
+        }
+        .kpi-sub.success { color: #27ae60; }
+        .kpi-sub.error { color: #e74c3c; }
+        .kpi-sub.warning { color: #f39c12; }
         
         /* Sections */
         section {
-            padding: 40px;
-            border-bottom: 1px solid #e9ecef;
+            padding: 30px 40px;
+            border-bottom: 1px solid #ecf0f1;
         }
         
-        section:last-of-type {
-            border-bottom: none;
-        }
-        
-        section h2 {
-            font-size: 1.8em;
+        h2 {
+            font-size: 1.2em;
             font-weight: 600;
-            color: #1e3c72;
-            margin-bottom: 25px;
-            position: relative;
-            padding-bottom: 15px;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
         }
         
-        section h2:after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 60px;
-            height: 4px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            border-radius: 2px;
+        /* Flow */
+        .flow-viz {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
         }
         
-        /* Metrics Grid */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
+        .stage {
+            flex: 1;
+            background: #ecf0f1;
+            padding: 20px 15px;
+            border-radius: 6px;
+            text-align: center;
+            border-left: 4px solid #3498db;
         }
         
-        .metric-card {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .metric-title {
+        .stage-icon { font-size: 1.8em; margin-bottom: 8px; }
+        .stage-name {
+            font-weight: 600;
             font-size: 0.85em;
-            color: #6c757d;
+            color: #2c3e50;
+            margin-bottom: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 12px;
+        }
+        .stage-stats {
+            display: flex;
+            justify-content: space-around;
+            font-size: 0.8em;
+            color: #7f8c8d;
+        }
+        .stage-stat { text-align: center; }
+        .stage-stat-value { display: block; font-weight: 700; font-size: 1.2em; color: #2c3e50; }
+        
+        .arrow {
+            font-size: 1.5em;
+            color: #95a5a6;
+            flex-shrink: 0;
         }
         
-        .metric-value {
-            font-size: 1.8em;
-            font-weight: 700;
-            color: #1e3c72;
+        /* Metrics Table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .metrics-table th {
+            background: #ecf0f1;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.85em;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #bdc3c7;
+        }
+        
+        .metrics-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 0.9em;
+        }
+        
+        .metrics-table tr:hover { background: #f8f9fa; }
+        
+        /* Summary Cards */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .summary-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .summary-card h3 {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: #2c3e50;
             margin-bottom: 8px;
         }
         
-        .metric-detail {
+        .summary-card p {
             font-size: 0.9em;
-            color: #6c757d;
-        }
-        
-        /* Insights */
-        .insight-box {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            padding: 30px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        
-        .insight-icon {
-            font-size: 2em;
-            margin-bottom: 15px;
-        }
-        
-        .insight-title {
-            font-size: 1.2em;
-            font-weight: 600;
-            color: #1e3c72;
-            margin-bottom: 10px;
-        }
-        
-        .insight-text {
-            font-size: 1em;
-            color: #495057;
             line-height: 1.6;
+            color: #5a6c7d;
         }
         
-        .stat-bar {
-            height: 8px;
-            background: #e9ecef;
-            border-radius: 4px;
-            margin: 15px 0;
-            overflow: hidden;
-        }
-        
-        .stat-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #28a745, #20c997);
-            border-radius: 4px;
-            transition: width 1s ease;
-        }
-        
-        .stat-fill.warning {
-            background: linear-gradient(90deg, #ffc107, #fd7e14);
-        }
-        
-        .stat-fill.danger {
-            background: linear-gradient(90deg, #dc3545, #c82333);
-        }
-        
-        /* Recommendations */
-        .recommendation {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border-left: 4px solid #667eea;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .recommendation-icon {
-            display: inline-block;
-            font-size: 1.3em;
-            margin-right: 10px;
-        }
-        
-        .recommendation-text {
-            display: inline;
-            font-size: 1em;
-            color: #495057;
-        }
+        .summary-card.success { border-left-color: #27ae60; }
+        .summary-card.warning { border-left-color: #f39c12; }
+        .summary-card.error { border-left-color: #e74c3c; }
         
         /* Footer */
         .footer {
-            background: #1e3c72;
-            color: white;
-            padding: 20px 40px;
+            background: #ecf0f1;
+            padding: 15px 40px;
             text-align: center;
-            font-size: 0.9em;
+            font-size: 0.85em;
+            color: #7f8c8d;
         }
         
-        .footer p {
-            margin: 5px 0;
+        @media (max-width: 768px) {
+            .kpis { grid-template-columns: repeat(2, 1fr); }
+            .flow-viz { flex-direction: column; }
+            .arrow { display: none; }
+            .summary-cards { grid-template-columns: 1fr; }
         }
         """
     
-    def _get_status_color(self, status: str) -> str:
-        """Obtener clase de color según status"""
-        status = status.lower()
-        if status == 'healthy':
-            return 'success'
-        elif status == 'warning':
-            return 'warning'
-        elif status in ['critical', 'failed']:
-            return 'danger'
-        return ''
-    
-    def _get_quality_status(self, score: float) -> str:
-        """Obtener status textual de calidad"""
-        if score >= 95:
-            return 'Excellent'
-        elif score >= 85:
-            return 'Good'
-        elif score >= 75:
-            return 'Acceptable'
-        elif score >= 60:
-            return 'Needs Improvement'
-        else:
-            return 'Critical'
-    
-    def _render_stage_metrics(self, stages: dict) -> str:
-        """Renderizar métricas de etapas"""
-        cards = []
+    def _render_flow(self, stages: dict) -> str:
+        stage_order = ['INGESTION', 'VALIDATION', 'TRANSFORMATION', 'OUTPUT']
+        icons = {'INGESTION': '📥', 'VALIDATION': '✓', 'TRANSFORMATION': '⚙️', 'OUTPUT': '📤'}
         
-        stage_icons = {
-            'INGESTION': '📥',
-            'VALIDATION': '✓',
-            'TRANSFORMATION': '⚙️',
-            'OUTPUT': '📤'
-        }
-        
-        for stage_name, data in stages.items():
-            icon = stage_icons.get(stage_name, '•')
+        html = ['<div class="flow-viz">']
+        for i, name in enumerate(stage_order):
+            if name not in stages:
+                continue
+            data = stages[name]
             duration = data.get('duration_seconds', 0)
             records = data.get('records_output', 0)
             
-            cards.append(f"""
-            <div class="metric-card">
-                <div class="metric-title">{icon} {stage_name}</div>
-                <div class="metric-value">{duration:.2f}s</div>
-                <div class="metric-detail">{records:,} records processed</div>
+            html.append(f"""
+            <div class="stage">
+                <div class="stage-icon">{icons.get(name, '•')}</div>
+                <div class="stage-name">{name}</div>
+                <div class="stage-stats">
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">{records:,}</span>
+                        <span>records</span>
+                    </div>
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">{duration:.1f}s</span>
+                        <span>duration</span>
+                    </div>
+                </div>
             </div>
             """)
+            
+            if i < len([s for s in stage_order if s in stages]) - 1:
+                html.append('<div class="arrow">→</div>')
         
-        return ''.join(cards)
+        html.append('</div>')
+        return ''.join(html)
     
-    def _render_quality_insights(self, validation_stage: dict) -> str:
-        """Renderizar insights de calidad"""
+    def _render_metrics_table(self, stages: dict, monitoring: dict) -> str:
+        validation_stage = stages.get('VALIDATION', {})
         quality_score = validation_stage.get('quality_score', 0)
         passed = validation_stage.get('validations_passed', 0)
         failed = validation_stage.get('validations_failed', 0)
-        total = passed + failed
         
-        bar_class = 'stat-fill'
-        if quality_score < 75:
-            bar_class += ' danger'
-        elif quality_score < 85:
-            bar_class += ' warning'
+        duration = monitoring.get('total_duration', 0)
+        records = monitoring.get('total_records_processed', 0)
+        throughput = records / duration if duration > 0 else 0
         
-        insight_icon = '✅' if quality_score >= 85 else '⚠️' if quality_score >= 75 else '❌'
+        slowest = max(stages.items(), key=lambda x: x[1].get('duration_seconds', 0)) if stages else ('N/A', {})
         
         return f"""
-        <div class="insight-box">
-            <div class="insight-icon">{insight_icon}</div>
-            <div class="insight-title">Quality Assessment</div>
-            <div class="insight-text">
-                {passed} de {total} validaciones pasaron exitosamente. 
-                El pipeline alcanzó un score de calidad del {quality_score:.1f}%.
-            </div>
-            <div class="stat-bar">
-                <div class="{bar_class}" style="width: {quality_score}%"></div>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #6c757d;">
-                <span>✓ {passed} Passed</span>
-                <span>✗ {failed} Failed</span>
-            </div>
-        </div>
+        <table class="metrics-table">
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>Details</th>
+            </tr>
+            <tr>
+                <td><strong>Data Quality</strong></td>
+                <td>{quality_score:.1f}%</td>
+                <td>{passed} of {passed + failed} validations passed ({failed} failed)</td>
+            </tr>
+            <tr>
+                <td><strong>Processing Speed</strong></td>
+                <td>{throughput:,.0f} rec/s</td>
+                <td>Processed {records:,} records in {duration:.2f} seconds</td>
+            </tr>
+            <tr>
+                <td><strong>Pipeline Efficiency</strong></td>
+                <td>{len(stages)} stages</td>
+                <td>All stages completed successfully</td>
+            </tr>
+            <tr>
+                <td><strong>Bottleneck</strong></td>
+                <td>{slowest[0]}</td>
+                <td>Slowest stage took {slowest[1].get('duration_seconds', 0):.2f}s</td>
+            </tr>
+        </table>
         """
     
-    def _render_recommendations(self, monitoring: dict) -> str:
-        """Renderizar recomendaciones"""
-        recommendations = []
-        
-        health_status = monitoring.get('health_status', 'unknown')
-        quality_score = monitoring.get('stages', {}).get('VALIDATION', {}).get('quality_score', 0)
+    def _render_summary(self, validation_stage: dict, monitoring: dict, stages: dict) -> str:
+        quality_score = validation_stage.get('quality_score', 0)
+        passed = validation_stage.get('validations_passed', 0)
+        failed = validation_stage.get('validations_failed', 0)
+        health = monitoring.get('health_status', 'unknown')
+        records = monitoring.get('total_records_processed', 0)
         duration = monitoring.get('total_duration', 0)
+        throughput = records / duration if duration > 0 else 0
         
-        # Recomendaciones basadas en métricas
-        if quality_score < 75:
-            recommendations.append({
-                'icon': '🔍',
-                'text': 'El score de calidad está por debajo del umbral. Se recomienda revisar las validaciones fallidas y corregir los datos en origen.'
+        cards = []
+        
+        # Quality card
+        if quality_score >= 90:
+            cards.append({
+                'class': 'success',
+                'title': '✓ Excellent Data Quality',
+                'text': f'Pipeline achieved {quality_score:.1f}% quality score. All critical validations passed successfully. Data meets business standards.'
+            })
+        elif quality_score >= 75:
+            cards.append({
+                'class': 'warning',
+                'title': '⚠ Acceptable Quality',
+                'text': f'Quality score is {quality_score:.1f}%. {failed} validation(s) failed. Review recommended but operations can continue.'
+            })
+        else:
+            cards.append({
+                'class': 'error',
+                'title': '✗ Quality Issues',
+                'text': f'Quality score below threshold ({quality_score:.1f}%). {failed} failures detected. Immediate review required.'
             })
         
-        if quality_score >= 95:
-            recommendations.append({
-                'icon': '🎯',
-                'text': 'Excelente calidad de datos. El pipeline está operando dentro de los parámetros óptimos.'
+        # Performance card
+        if throughput > 5000:
+            cards.append({
+                'class': 'success',
+                'title': '⚡ High Performance',
+                'text': f'Processing at {throughput:,.0f} rec/s. Pipeline operating at optimal efficiency.'
+            })
+        elif throughput > 1000:
+            cards.append({
+                'class': 'success',
+                'title': '📊 Standard Performance',
+                'text': f'Processing at {throughput:,.0f} rec/s. Performance within expected parameters.'
+            })
+        else:
+            cards.append({
+                'class': 'warning',
+                'title': '🔧 Optimization Opportunity',
+                'text': f'Processing {throughput:,.0f} rec/s. Consider performance tuning for faster execution.'
             })
         
-        if duration > 30:
-            recommendations.append({
-                'icon': '⚡',
-                'text': f'El tiempo de ejecución ({duration:.1f}s) podría optimizarse. Considere implementar procesamiento paralelo o ajustar índices de base de datos.'
-            })
-        
-        if health_status == 'failed':
-            recommendations.append({
-                'icon': '🚨',
-                'text': 'El pipeline falló. Se recomienda investigar los errores reportados y tomar acción correctiva inmediata.'
-            })
-        
-        if not recommendations:
-            recommendations.append({
-                'icon': '👍',
-                'text': 'El pipeline está funcionando correctamente sin problemas detectados.'
-            })
-        
-        html = []
-        for rec in recommendations:
+        html = ['<div class="summary-cards">']
+        for card in cards:
             html.append(f"""
-            <div class="recommendation">
-                <span class="recommendation-icon">{rec['icon']}</span>
-                <span class="recommendation-text">{rec['text']}</span>
+            <div class="summary-card {card['class']}">
+                <h3>{card['title']}</h3>
+                <p>{card['text']}</p>
             </div>
             """)
+        html.append('</div>')
         
         return ''.join(html)
+    
+    def _get_status_class(self, status: str) -> str:
+        status = status.lower()
+        if status == 'healthy': return 'healthy'
+        elif status == 'warning': return 'warning'
+        return 'critical'
+    
+    def _get_quality_status(self, score: float) -> str:
+        if score >= 95: return 'Excellent'
+        elif score >= 85: return 'Good'
+        elif score >= 75: return 'Acceptable'
+        elif score >= 60: return 'Needs Review'
+        return 'Critical'
+    
+    def _get_quality_class(self, score: float) -> str:
+        if score >= 85: return 'success'
+        elif score >= 75: return 'warning'
+        return 'error'

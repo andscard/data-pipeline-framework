@@ -1,3 +1,0 @@
-execution_id,start_time,end_time,duration_seconds,status,execution_type,triggered_by,environment,quality_score,health_status,total_errors,total_warnings,records_processed,records_failed
-41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,2026-02-10 12:27:40,19.398,failed,manual,,development,56.16,failed,0,0,61000,0
-0fdf5a39-d461-4ddd-8be6-ff6a7372b105,2026-02-10 12:26:25,2026-02-10 12:26:44,18.730,failed,manual,,development,60.27,failed,0,0,61000,0

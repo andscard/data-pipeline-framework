@@ -33,7 +33,7 @@ def get_connection():
     connector = create_postgres_connector(
         host=config.POSTGRES_HOST,
         port=config.POSTGRES_PORT,
-        database='data_framework',
+        database=config.POSTGRES_DB,
         user=config.POSTGRES_USER,
         password=config.POSTGRES_PASSWORD,
         mode="sqlalchemy"
@@ -42,7 +42,7 @@ def get_connection():
     if not connector.connect():
         print("\n[ERROR] No se pudo conectar a la base de datos")
         print(f"Host: {config.POSTGRES_HOST}:{config.POSTGRES_PORT}")
-        print(f"Database: data_framework")
+        print(f"Database: {config.POSTGRES_DB}")
         sys.exit(1)
     
     return connector
@@ -55,7 +55,7 @@ def get_connection():
 def show_status():
     """Ver estado general de todas las tablas"""
     print("\n" + "="*80)
-    print("  ESTADO DE LA BASE DE DATOS - data_framework")
+    print(f"  ESTADO DE LA BASE DE DATOS - {config.POSTGRES_DB}")
     print("="*80)
     
     connector = get_connection()

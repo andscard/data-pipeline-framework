@@ -87,13 +87,86 @@ class PipelineExecutor:
         # Datasets en memoria
         self.datasets = {}
         
+        # State directory para ejecución de etapas individuales
+        self.state_dir = Path("data/pipeline_state") / name
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        
         # Módulos
         self.loader = MultiSourceLoader()
         self.audit = AuditManager(POSTGRES_CONFIG)
         self.monitoring = None  # Se inicializa en execute() con execution_id
+        self._previous_metrics = None  # Métricas de etapas previas
+        self._previous_validation_results = []  # Validation results de etapa de validación
         
         # Conectar auditoría
         self.audit.connect()
+    
+    def _save_state(self):
+        """Guardar estado de datasets, métricas y validation results para ejecución de etapas individuales."""
+        try:
+            import pickle
+            state_file = self.state_dir / "datasets.pkl"
+            metrics_file = self.state_dir / "metrics.pkl"
+            validation_file = self.state_dir / "validation_results.pkl"
+            
+            # Guardar datasets
+            with open(state_file, 'wb') as f:
+                pickle.dump(self.datasets, f)
+            
+            # Guardar métricas acumuladas del monitoring
+            if self.monitoring:
+                with open(metrics_file, 'wb') as f:
+                    pickle.dump(self.monitoring.metrics, f)
+                logger.info(f"✓ Estado guardado: {len(self.datasets)} datasets + métricas de {len(self.monitoring.metrics.stages)} etapas")
+            else:
+                logger.info(f"✓ Estado guardado: {len(self.datasets)} datasets")
+            
+            # Guardar validation results si existen (solo en etapa de validación)
+            if self.execution_id:
+                validation_results = self.audit.get_validation_results(self.execution_id)
+                if validation_results:
+                    with open(validation_file, 'wb') as f:
+                        pickle.dump(validation_results, f)
+                    logger.info(f"✓ Validation results guardados: {len(validation_results)} resultados")
+        except Exception as e:
+            logger.warning(f"No se pudo guardar estado: {e}")
+    
+    def _load_state(self):
+        """Cargar estado de datasets, métricas y validation results desde ejecución previa."""
+        try:
+            import pickle
+            state_file = self.state_dir / "datasets.pkl"
+            metrics_file = self.state_dir / "metrics.pkl"
+            validation_file = self.state_dir / "validation_results.pkl"
+            
+            # Cargar datasets
+            if state_file.exists():
+                with open(state_file, 'rb') as f:
+                    self.datasets = pickle.load(f)
+                logger.info(f"✓ Datasets restaurados: {len(self.datasets)} datasets")
+            else:
+                logger.warning(f"No se encontró estado previo de datasets")
+            
+            # Cargar métricas previas si existen
+            if metrics_file.exists():
+                with open(metrics_file, 'rb') as f:
+                    self._previous_metrics = pickle.load(f)
+                logger.info(f"✓ Métricas restauradas: {len(self._previous_metrics.stages)} etapas previas")
+            else:
+                self._previous_metrics = None
+                logger.info("No se encontraron métricas previas (primera etapa)")
+            
+            # Cargar validation results previos si existen
+            if validation_file.exists():
+                with open(validation_file, 'rb') as f:
+                    self._previous_validation_results = pickle.load(f)
+                logger.info(f"✓ Validation results restaurados: {len(self._previous_validation_results)} resultados")
+            else:
+                self._previous_validation_results = []
+        except Exception as e:
+            logger.warning(f"No se pudo cargar estado: {e}")
+            self._previous_metrics = None
+            self._previous_validation_results = []
     
     def register(self) -> Optional[str]:
         """
@@ -145,32 +218,38 @@ class PipelineExecutor:
         
         return executor
     
-    def execute(self, dry_run: bool = False) -> ExecutionResult:
+    def execute(self, dry_run: bool = False, stage: Optional[str] = None) -> ExecutionResult:
         """
-        Ejecutar pipeline completo.
+        Ejecutar pipeline completo o una etapa individual.
         
         Args:
             dry_run: Si True, simula ejecución sin procesar datos
+            stage: Etapa específica a ejecutar ('ingestion', 'validation', 'transformation', 'output')
+                   Si None, ejecuta todas las etapas
             
         Returns:
             ExecutionResult con resultados de ejecución
         """
-        # Auto-registrar pipeline si no existe
         if not self.pipeline_id:
-            logger.info("Pipeline no registrado, auto-registrando...")
             self.register()
         
-        # Iniciar registro de ejecución en auditoría
         self.execution_id = self.audit.start_execution(
             pipeline_id=self.pipeline_id,
             execution_type="manual"
         )
         
-        # Inicializar MonitoringCollector para métricas en tiempo real
+        if stage:
+            self._load_state()
+        
         self.monitoring = MonitoringCollector(
             execution_id=self.execution_id,
             pipeline_name=self.name
         )
+        
+        if stage and self._previous_metrics:
+            for stage_name, stage_metrics in self._previous_metrics.stages.items():
+                self.monitoring.metrics.add_stage_metrics(stage_metrics)
+            logger.info(f"✓ Métricas restauradas: {len(self._previous_metrics.stages)} etapas previas")
         
         result = ExecutionResult(self.name, self.execution_id)
         
@@ -179,57 +258,37 @@ class PipelineExecutor:
                 result.complete("completed")
                 return result
             
-            # NUEVA ARQUITECTURA: 3 ETAPAS
-            # (Los datos ya pueden venir infectados desde data_infection module)
+            if not stage or stage == 'ingestion':
+                self._execute_ingestion(result)
+                if stage == 'ingestion':
+                    self._save_state()
             
-            # ETAPA 1: INGESTION
-            self._execute_ingestion(result)
+            if not stage or stage == 'validation':
+                self._execute_validation(result)
+                if stage == 'validation':
+                    self._save_state()
             
-            # ETAPA 2: VALIDATION (detecta ataques y problemas de calidad)
-            self._execute_validation(result)
+            if not stage or stage == 'transformation':
+                self._execute_transformation(result)
+                if stage == 'transformation':
+                    self._save_state()
             
-            # ETAPA 3: TRANSFORMATION
-            self._execute_transformation(result)
+            if not stage or stage == 'output':
+                if 'output' in self.config:
+                    self._execute_outputs(result)
+                if stage == 'output':
+                    self._save_state()
             
-            # ETAPA 4: OUTPUT (opcional)
-            if 'output' in self.config:
-                self._execute_outputs(result)
-            
-            # Finalizar monitoring y determinar status
             self.monitoring.finalize()
             monitoring_summary = self.monitoring.get_summary()
             health_status = self.monitoring.get_health_status()
-            execution_status = "completed" if health_status.value in ['healthy', 'warning'] else "failed"
+            execution_status = "completed"
             result.complete(execution_status)
             
-            # Generar reportes
-            try:
-                # Recopilar datos de auditoría para el reporte
-                audit_data = {
-                    'execution_id': self.execution_id,
-                    'pipeline_id': self.pipeline_id,
-                    'validation_results': self.audit.get_validation_results(self.execution_id)
-                }
-                
-                # Reporte técnico detallado (HTML)
-                report_generator = HTMLReportGenerator()
-                report_path = report_generator.generate_report(
-                    monitoring_summary=monitoring_summary,
-                    audit_data=audit_data
-                )
-                result.report_path = report_path
-                logger.info(f"✓ Reporte Técnico: {report_path}")
-                
-                # Reporte ejecutivo (Management)
-                exec_generator = ExecutiveReportGenerator()
-                exec_report_path = exec_generator.generate_report(
-                    monitoring_summary=monitoring_summary
-                )
-                logger.info(f"✓ Reporte Ejecutivo: {exec_report_path}")
-                
-            except Exception as e:
-                logger.warning(f"No se pudo generar reportes: {e}")
-                exec_report_path = None
+            if stage == 'validation':
+                self._generate_validation_report(monitoring_summary)
+            elif not stage or stage == 'output':
+                self._generate_executive_report(monitoring_summary)
             
             self.audit.complete_execution(
                 execution_id=self.execution_id,
@@ -237,25 +296,22 @@ class PipelineExecutor:
                 records_processed=result.records_processed,
                 records_failed=result.records_failed,
                 stages_summary=[{
-                    'stage_name': stage.stage_name,
-                    'status': stage.status.value,
-                    'duration_seconds': stage.duration_seconds,
-                    'records_input': stage.records_input,
-                    'records_output': stage.records_output,
-                    'records_failed': stage.records_failed,
-                    'quality_score': stage.quality_score,
-                    'validations_passed': stage.validations_passed,
-                    'validations_failed': stage.validations_failed
-                } for stage in self.monitoring.metrics.stages.values()],
+                    'stage_name': s.stage_name,
+                    'status': s.status.value,
+                    'duration_seconds': s.duration_seconds,
+                    'records_input': s.records_input,
+                    'records_output': s.records_output,
+                    'records_failed': s.records_failed,
+                    'quality_score': s.quality_score,
+                    'validations_passed': s.validations_passed,
+                    'validations_failed': s.validations_failed
+                } for s in self.monitoring.metrics.stages.values()],
                 quality_score=monitoring_summary.get('overall_quality_score'),
                 health_status=health_status.value,
                 total_errors=monitoring_summary.get('total_errors', 0),
                 total_warnings=monitoring_summary.get('total_warnings', 0),
                 report_path=str(result.report_path) if result.report_path else None,
-                executive_report_path=str(exec_report_path) if exec_report_path else None,
-                metrics={
-                    'health_status': self.monitoring.get_health_status().value
-                }
+                metrics={'health_status': health_status.value}
             )
             
             # Guardar resumen de monitoring en result para reporte HTML
@@ -525,24 +581,22 @@ class PipelineExecutor:
             passed_count = validation_result.get('passed_expectations', 0)
             failed_count = validation_result.get('failed_expectations', 0)
             success = validation_result.get('success', False)
-            
-            # Registrar SOLO las expectativas fallidas (info útil)
             failed_details = validation_result.get('failed_details', [])
             
-            for failed_detail in failed_details:
-                self.audit.log_validation_result(
-                    execution_id=self.execution_id,
-                    rule_name=suite_name,
-                    rule_type="great_expectations",
-                    passed=False,
-                    failed_count=1,
-                    failure_details=[failed_detail],
-                    dataset_name=dataset_name,
-                    suite_name=suite_name,
-                    total_records=record_count,
-                    severity="critical" if 'security' in suite_name.lower() else "error",
-                    expectation_type=failed_detail.get('expectation_type')
-                )
+            # Registrar SUMMARY de la suite (1 registro con totales)
+            self.audit.log_validation_result(
+                execution_id=self.execution_id,
+                rule_name=suite_name,
+                rule_type="great_expectations",
+                passed=success,
+                failed_count=failed_count,
+                failure_details=failed_details,
+                dataset_name=dataset_name,
+                suite_name=suite_name,
+                total_records=record_count,
+                severity="critical" if 'security' in suite_name.lower() else "error",
+                expectation_type=f"{passed_count}_passed_{failed_count}_failed"
+            )
             
             # NUEVO: Registrar resumen agregado de validaciones (reduce inserts 95%+)
             # En lugar de insertar 1 fila por cada validación pasada, insertamos UN resumen
@@ -648,6 +702,43 @@ class PipelineExecutor:
             )
         
         logger.info("Transformation completed")
+    
+    def _generate_validation_report(self, monitoring_summary: dict):
+        """Generar reporte técnico de validación."""
+        try:
+            validation_results = self.audit.get_validation_results(self.execution_id)
+            validation_summary = self.audit.get_validation_summary(self.execution_id)
+            
+            audit_data = {
+                'execution_id': self.execution_id,
+                'pipeline_id': self.pipeline_id,
+                'validation_results': validation_results,
+                'validation_summary': validation_summary
+            }
+            
+            report_generator = HTMLReportGenerator()
+            report_path = report_generator.generate_report(
+                monitoring_summary=monitoring_summary,
+                audit_data=audit_data,
+                include_stages=False,
+                report_type="technical"
+            )
+            logger.info(f"✓ Reporte de Validación: {report_path}")
+            
+        except Exception as e:
+            logger.warning(f"No se pudo generar reporte de validación: {e}")
+    
+    def _generate_executive_report(self, monitoring_summary: dict):
+        """Generar reporte ejecutivo."""
+        try:
+            exec_generator = ExecutiveReportGenerator()
+            exec_report_path = exec_generator.generate_report(
+                monitoring_summary=monitoring_summary
+            )
+            logger.info(f"✓ Reporte Ejecutivo: {exec_report_path}")
+            
+        except Exception as e:
+            logger.warning(f"No se pudo generar reporte ejecutivo: {e}")
     
     def _execute_outputs(self, result: ExecutionResult):
         """Guardar datasets en destinos configurados (archivos o PostgreSQL)."""

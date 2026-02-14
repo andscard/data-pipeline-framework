@@ -3,9 +3,9 @@ services:
         image: postgres:15
         container_name: framework_postgres
         environment:
-            POSTGRES_DB: ${POSTGRES_DB:-data_framework}
-            POSTGRES_USER: ${POSTGRES_USER:-admin}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-JLjB77R1SCSrF5ZwNECG9Q}
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_INITDB_ARGS: '-E UTF8 --locale=en_US.UTF-8'
         ports:
             - '5433:5432'
@@ -16,7 +16,7 @@ services:
             test:
                 [
                     'CMD-SHELL',
-                    'pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-data_framework}',
+                    'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}',
                 ]
             interval: 10s
             timeout: 5s

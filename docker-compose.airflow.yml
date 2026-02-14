@@ -1,0 +1,159 @@
+# ============================================================================
+# Airflow Integration - Data Pipeline Framework
+# ============================================================================
+# Este archivo extiende docker-compose.yml para agregar Airflow sin afectar
+# el funcionamiento standalone del framework.
+#
+# Uso:
+#   Iniciar todo:     docker-compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+#   Solo framework:   docker-compose up -d
+#   Ver logs:         docker-compose -f docker-compose.yml -f docker-compose.airflow.yml logs -f
+#   Detener:          docker-compose -f docker-compose.yml -f docker-compose.airflow.yml down
+#
+# Airflow UI: http://localhost:8080
+#   Usuario: admin
+#   Password: admin
+# ============================================================================
+
+services:
+  # Inicializador de base de datos de Airflow
+  airflow-init:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: framework_airflow_init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+      # Variables del framework
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PYTHONPATH: /opt/airflow/framework
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./:/opt/airflow/framework  # Framework completo disponible
+      - ./data:/opt/airflow/framework/data  # Datos
+      - ./examples:/opt/airflow/framework/examples  # Configs de pipelines
+    user: "${AIRFLOW_UID}:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Instalar dependencias del framework desde requirements.txt
+        echo "📦 Instalando dependencias del framework..."
+        pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt
+        
+        # Instalar comando global data-framework (directorio del usuario)
+        echo "🔧 Instalando comando data-framework..."
+        mkdir -p /home/airflow/.local/bin
+        cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework
+        chmod +x /home/airflow/.local/bin/data-framework
+        export PATH="/home/airflow/.local/bin:$PATH"
+        
+        # Inicializar BD de Airflow
+        echo "🗄️ Inicializando base de datos de Airflow..."
+        airflow db migrate
+        
+        # Crear usuario admin
+        echo "👤 Creando usuario admin..."
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin 2>/dev/null || echo "Usuario admin ya existe"
+        
+        echo "✅ Airflow inicializado correctamente"
+    restart: "no"
+
+  # Scheduler de Airflow
+  airflow-scheduler:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: framework_airflow_scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-common-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./:/opt/airflow/framework
+      - ./data:/opt/airflow/framework/data
+      - ./examples:/opt/airflow/framework/examples
+    user: "${AIRFLOW_UID}:0"
+    command: bash -c "
+      echo '📦 Instalando dependencias del framework...' &&
+      pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt &&
+      echo '🔧 Instalando comando data-framework...' &&
+      mkdir -p /home/airflow/.local/bin &&
+      cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework &&
+      chmod +x /home/airflow/.local/bin/data-framework &&
+      export PATH='/home/airflow/.local/bin:$PATH' &&
+      echo '�🚀 Iniciando Airflow Scheduler...' &&
+      airflow scheduler
+      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Webserver de Airflow
+  airflow-webserver:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: framework_airflow_webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-common-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./:/opt/airflow/framework
+      - ./data:/opt/airflow/framework/data
+      - ./examples:/opt/airflow/framework/examples
+    user: "${AIRFLOW_UID}:0"
+    ports:
+      - "8080:8080"
+    command: bash -c "
+      echo '📦 Instalando dependencias del framework...' &&
+      pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt &&
+      echo '🔧 Instalando comando data-framework...' &&
+      mkdir -p /home/airflow/.local/bin &&
+      cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework &&
+      chmod +x /home/airflow/.local/bin/data-framework &&
+      export PATH='/home/airflow/.local/bin:$PATH' &&
+      echo '🌐 Iniciando Airflow Webserver...' &&
+      airflow webserver
+      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+# No necesitamos volúmenes adicionales - usamos los del docker-compose.yml base

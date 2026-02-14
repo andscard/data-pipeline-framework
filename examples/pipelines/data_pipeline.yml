@@ -15,7 +15,7 @@
 # ============================================================================
 
 pipeline:
-  name: "CustomerTransactionPipeline"
+  name: "CustomerPipeline"
   description: "Pipeline completo de datos de clientes y transacciones"
   schedule: "@daily"
 

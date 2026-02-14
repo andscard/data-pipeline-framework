@@ -511,7 +511,12 @@ class AuditManager:
                         passed,
                         failed_count,
                         failure_details,
-                        timestamp
+                        timestamp,
+                        expectation_type,
+                        suite_name,
+                        dataset_name,
+                        total_records,
+                        severity
                     FROM pipeline.validation_results
                     WHERE execution_id = %s
                     ORDER BY timestamp ASC
@@ -530,13 +535,64 @@ class AuditManager:
                         'passed': row[2],
                         'failed_count': row[3],
                         'failure_details': failure_details,
-                        'timestamp': row[5].isoformat() if row[5] else None
+                        'timestamp': row[5].isoformat() if row[5] else None,
+                        'expectation_type': row[6],  # expectation_type agregado
+                        'suite_name': row[7],
+                        'dataset_name': row[8],
+                        'total_records': row[9],
+                        'severity': row[10]
                     })
                 
                 return results
                 
         except Exception as e:
             logger.error(f"Failed to get validation results: {e}")
+            return []
+    
+    def get_validation_summary(self, execution_id: str) -> List[Dict[str, Any]]:
+        """
+        Obtener resumen agregado de validaciones por suite.
+        
+        Args:
+            execution_id: UUID de la ejecución
+            
+        Returns:
+            Lista de resúmenes de validación por suite
+        """
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        suite_name,
+                        dataset_name,
+                        total_validations,
+                        passed_validations,
+                        failed_validations,
+                        quality_score,
+                        total_records,
+                        timestamp
+                    FROM pipeline.validation_summary
+                    WHERE execution_id = %s
+                    ORDER BY suite_name, timestamp ASC
+                """, (execution_id,))
+                
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        'suite_name': row[0],
+                        'dataset_name': row[1],
+                        'total_validations': row[2],
+                        'passed_validations': row[3],
+                        'failed_validations': row[4],
+                        'quality_score': row[5],
+                        'total_records': row[6],
+                        'timestamp': row[7].isoformat() if row[7] else None
+                    })
+                
+                return results
+                
+        except Exception as e:
+            logger.error(f"Failed to get validation summary: {e}")
             return []
     
     def log_audit_event(

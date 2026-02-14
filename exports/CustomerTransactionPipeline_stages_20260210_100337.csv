@@ -1,4 +1,0 @@
-execution_id,execution_date,execution_status,stage_name,stage_order,stage_status,duration_seconds,records_in,records_out,records_failed,success_rate_pct,memory_usage_mb,cpu_usage_percent,error_count,warning_count,quality_score,validations_passed,validations_failed
-41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,INGESTION,1,completed,0.566,0,61000,0,,,,0,0,,,
-41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,VALIDATION,2,completed,11.505,61000,61000,0,100.00,,,0,0,56.16438356164384,41,32
-41c0ab2a-0c2e-45c0-9c89-22c27d8ab255,2026-02-10 12:27:21,failed,TRANSFORMATION,3,completed,0.063,59958,59958,0,100.00,,,0,0,,,

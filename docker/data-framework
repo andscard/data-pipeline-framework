@@ -1,0 +1,7 @@
+#!/bin/bash
+# Data Pipeline Framework - Docker CLI Wrapper
+# Este script permite usar "data-framework" en lugar de "python -m src.cli"
+
+cd /opt/airflow/framework
+export PYTHONPATH=/opt/airflow/framework:$PYTHONPATH
+exec /usr/local/bin/python -m src.cli "$@"

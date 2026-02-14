@@ -32,40 +32,47 @@ Framework production-ready para construir pipelines de datos con validación int
 
 ## Inicio Rápido
 
+### Requisitos
+
+- **Python 3.10+** ([Descargar](https://www.python.org/downloads/))
+- **Docker Desktop** ([Descargar](https://www.docker.com/products/docker-desktop/))
+- Windows con PowerShell 5.1+
+
 ### Instalación
 
 ```powershell
-# Windows: Ejecutar setup automatizado
+# 1. Configurar variables de entorno
+Copy-Item .env.example .env
+notepad .env  # Personalizar passwords
+
+# 2. Ejecutar setup automatizado
 .\setup.ps1
+
+# 3. Activar comando global
+. $PROFILE
 ```
 
 **El setup realiza:**
-- Verifica dependencias (Python 3.10+, Docker)
-- Instala paquetes Python
-- Inicia contenedor PostgreSQL
-- Inicializa schema de base de datos
-- Genera datos de ejemplo
-- Configura comando CLI global
+- Verifica Python 3.10+ y Docker
+- Crea entorno virtual Python
+- Instala dependencias
+- Levanta PostgreSQL en Docker
+- Inicializa schema de BD
+- Genera datos de ejemplo (10K clientes + 50K transacciones)
+- Configura comando `data-framework`
 
 **Duración:** 2-3 minutos
 
-### Activar Comando Global
+### Verificar Instalación
 
 ```powershell
-# Recargar perfil de PowerShell
-. $PROFILE
-
-# Verificar instalación
+# Verificar comando
 data-framework --help
-```
 
-### Ejecutar Tu Primer Pipeline
+# Ejecutar primer pipeline
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
-```bash
-# Ejecutar pipeline de ejemplo
-data-framework run pipeline -c examples/complete_pipeline.yml
-
-# Ver resultados
+# Ver reporte generado
 start reports\execution_*.html
 ```
 
@@ -126,6 +133,61 @@ data-framework infect -c examples/infection_config.yml
 - Datos faltantes
 - Registros duplicados
 - Corrupción de formato
+
+## Orquestación con Airflow
+
+El framework incluye integración con Apache Airflow para programar y monitorear la ejecución de pipelines.
+
+### Inicio Rápido
+
+```powershell
+# Iniciar Framework + Airflow
+docker-compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+
+# Acceder a UI
+# http://localhost:8080
+# Usuario: admin / Password: admin
+```
+
+### Características
+
+- 📅 **Scheduling Automático**: Ejecutar pipelines según cron expressions (@daily, @hourly, etc.)
+- 🔄 **5 Tareas Separadas**: Cada pipeline se divide en ingestion, validation, transformation, output, export_logs
+- 🎯 **Monitoreo Visual**: Interface web para ver estado de ejecuciones
+- 🔁 **Re-ejecución Selectiva**: Re-ejecutar solo tareas fallidas sin repetir todo el pipeline
+- 🤖 **Auto-descubrimiento**: DAGs generados automáticamente desde `examples/pipelines/*.yml`
+- 📊 **Historial Completo**: Logs detallados de cada ejecución
+
+### Configuración de Pipeline
+
+```yaml
+# examples/pipelines/mi_pipeline.yml
+pipeline:
+  name: "MiPipeline"
+  schedule: "@daily"  # Ejecutar diariamente a medianoche
+  
+airflow:  # Opcional
+  default_args:
+    retries: 2
+    retry_delay_minutes: 5
+    email: ["alerts@company.com"]
+    email_on_failure: true
+```
+
+### Comandos
+
+```powershell
+# Ver logs
+docker-compose -f docker-compose.yml -f docker-compose.airflow.yml logs -f
+
+# Reiniciar scheduler (detectar nuevos DAGs)
+docker-compose -f docker-compose.yml -f docker-compose.airflow.yml restart airflow-scheduler
+
+# Detener Airflow
+docker-compose -f docker-compose.yml -f docker-compose.airflow.yml down
+```
+
+**Documentación completa**: [docs/AIRFLOW.md](docs/AIRFLOW.md)
 
 ## Arquitectura
 
@@ -279,7 +341,7 @@ outputs:
     mode: "replace"
 ```
 
-Ver [examples/complete_pipeline.yml](examples/complete_pipeline.yml) para ejemplo completo.
+Ver [examples/pipelines/data_pipeline.yml](examples/pipelines/data_pipeline.yml) para ejemplo completo.
 
 ## Gestión de Base de Datos
 
@@ -376,7 +438,8 @@ data-pipeline-framework/
 │   ├── EXPORT_LOGS.md              # Guía de exportación de logs
 │   └── VALIDATION_SYSTEM.md        # Tipos de validación
 ├── examples/
-│   ├── complete_pipeline.yml       # Ejemplo de pipeline completo
+│   ├── pipelines/data_pipeline.yml       # Ejemplo de pipeline completo
+│   ├── pipelines/infected_data_pipeline.yml       # Ejemplo de pipeline con datos infectados
 │   └── infection_config.yml        # Configuración de inyección de ataques
 ├── scripts/
 │   ├── init_db.sql                 # Inicialización de base de datos
@@ -400,7 +463,7 @@ data-pipeline-framework/
 python scripts/generate_sample_data.py -c 10000 -t 50000
 
 # 2. Ejecutar pipeline
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # 3. Ver reporte HTML
 start reports\execution_*.html
@@ -418,11 +481,11 @@ python scripts/generate_sample_data.py
 data-framework infect -c examples/infection_config.yml
 
 # 3. Actualizar configuración del pipeline para usar datos infectados
-# Editar examples/complete_pipeline.yml:
+# Editar examples/pipelines/data_pipeline.yml:
 #   path: "data/output/customers_infected.csv"
 
 # 4. Ejecutar pipeline de validación
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # 5. Revisar hallazgos de seguridad
 start reports\execution_*.html
@@ -434,7 +497,7 @@ start reports\execution_*.html
 
 ```bash
 # 1. Ejecutar pipeline
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # 2. Exportar métricas
 data-framework export-logs -n CustomerDataPipeline -o analysis/
@@ -500,9 +563,8 @@ python scripts/generate_sample_data.py -c 10000 -t 50000
 # Recargar perfil de PowerShell
 . $PROFILE
 
-# O usar método tradicional
-.venv\Scripts\Activate.ps1
-python -m src.cli run pipeline -c examples/pipeline.yml
+# O usar comando directo
+.\.venv\Scripts\python.exe -m src.cli run pipeline -c examples/pipelines/data_pipeline.yml
 ```
 
 ### Error de Conexión a Base de Datos
@@ -514,8 +576,12 @@ python -m src.cli run pipeline -c examples/pipeline.yml
 # Verificar estado del contenedor
 docker ps | findstr postgres
 
-# Iniciar si no está corriendo
-docker-compose up -d postgres
+data-framework --help
+```
+
+**Alternativa (si persiste el error):**
+```powershell
+# Usar comando directo desde venvtgres
 
 # Ver logs
 docker logs framework_postgres
@@ -525,11 +591,11 @@ docker logs framework_postgres
 
 **Error:** `yaml.scanner.ScannerError: mapping values are not allowed here`
 
-**Solución:**
-- Validar sintaxis YAML
-- Verificar indentación (usar espacios, no tabs)
-- Entrecomillar caracteres especiales
-- Referirse a [examples/complete_pipeline.yml](examples/complete_pipeline.yml)
+**Solución:**a-framework --help
+
+# Opción 2: Usar comando directo
+.\.venv\Scripts\python.exe -m src.cli run pipeline -c examples/pipelines/data_pipeline.yml
+```
 
 ### Sin Datos de Exportación
 
@@ -538,7 +604,7 @@ docker logs framework_postgres
 **Solución:**
 ```bash
 # Ejecutar pipeline primero
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # Luego exportar
 data-framework export-logs -n CustomerDataPipeline
@@ -546,6 +612,8 @@ data-framework export-logs -n CustomerDataPipeline
 
 ## Documentación
 
+- **[SETUP.md](SETUP.md)** - Guía completa de instalación paso a paso
+- **[AIRFLOW.md](docs/AIRFLOW.md)** - Integración con Apache Airflow para orquestación
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Arquitectura del sistema y flujo de datos
 - **[AUDIT_SYSTEM.md](docs/AUDIT_SYSTEM.md)** - Schema de base de datos y API de auditoría
 - **[CLI_REFERENCE.md](docs/CLI_REFERENCE.md)** - Referencia completa de comandos
@@ -554,8 +622,7 @@ data-framework export-logs -n CustomerDataPipeline
 - **[VALIDATION_SYSTEM.md](docs/VALIDATION_SYSTEM.md)** - Tipos de validación y configuración
 
 ## Requisitos
-
-- Python 3.10+
+hon 3.10+
 - Docker (para PostgreSQL)
 - 512MB RAM mínimo
 - 1GB espacio en disco

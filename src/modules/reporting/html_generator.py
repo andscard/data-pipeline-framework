@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 
+from .validation_formatter import ValidationFormatter
+
 class HTMLReportGenerator:
     """Generador de reportes HTML con diseño profesional empresarial"""
     
@@ -19,17 +21,28 @@ class HTMLReportGenerator:
         self,
         monitoring_summary: Dict[str, Any],
         audit_data: Optional[Dict[str, Any]] = None,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
+        include_stages: bool = True,
+        report_type: str = "technical"
     ) -> Path:
-        """Generar reporte HTML profesional"""
+        """Generar reporte HTML profesional
+        
+        Args:
+            monitoring_summary: Resumen de métricas del MonitoringCollector
+            audit_data: Datos de auditoría (validation_results)
+            output_path: Ruta de salida (opcional)
+            include_stages: Si True, incluye tabla de Pipeline Stages
+            report_type: 'technical' (validación) o 'execution' (completo)
+        """
         if not output_path:
             execution_id = monitoring_summary.get('execution_id', 'unknown')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_path = Path(f"reports/execution_{execution_id[:8]}_{timestamp}.html")
+            prefix = "validation" if report_type == "technical" else "execution"
+            output_path = Path(f"reports/{prefix}_{execution_id[:8]}_{timestamp}.html")
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        html_content = self._build_html(monitoring_summary, audit_data)
+        html_content = self._build_html(monitoring_summary, audit_data, include_stages, report_type)
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -37,11 +50,14 @@ class HTMLReportGenerator:
         logger.info(f"✓ Reporte HTML generado: {output_path}")
         return output_path
     
-    def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]]) -> str:
+    def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]], include_stages: bool = True, report_type: str = "technical") -> str:
         """Construir HTML completo"""
         execution_id = monitoring.get('execution_id', 'N/A')[:8]
         pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
         start_time = monitoring.get('start_time', 'N/A')
+        
+        # Título según tipo de reporte
+        report_title = "Data Quality Validation Report" if report_type == "technical" else "Data Pipeline Execution Report"
         
         # Extraer métricas
         health_status = monitoring.get('health_status', 'unknown')
@@ -62,22 +78,35 @@ class HTMLReportGenerator:
         if audit and 'validation_results' in audit:
             validation_results = audit['validation_results']
         
-        # Agrupar por suite
-        suites_summary = self._group_by_suite(validation_results)
+        # Usar validation_summary (siempre disponible y correcto)
+        validation_summary = audit.get('validation_summary', []) if audit else []
+        suites_summary = self._group_by_suite_from_summary(validation_summary)
         suites_html = self._render_suites(suites_summary)
         
-        # Tabla de fallos
-        failures_html = self._render_failures_table(validation_results)
+        # Tabla de fallos agregada por suite (datos completos)
+        # failures_html = self._render_failures_summary(suites_summary) # REMOVED per user request
         
-        # Stage summary
-        stages_html = self._render_stages(stages)
+        # Detalle completo de todos los fallos individuales
+        detailed_failures_html = self._render_detailed_failures(validation_results)
+        
+        # Stage summary (solo si include_stages=True)
+        stages_section = ""
+        if include_stages:
+            stages_html = self._render_stages(stages)
+            stages_section = f"""
+        <!-- Pipeline Stages -->
+        <section class="stages-section">
+            <h2>Pipeline Stages</h2>
+            {stages_html}
+        </section>
+        """
         
         return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline Report - {execution_id}</title>
+    <title>{report_title} - {execution_id}</title>
     <style>
 {self._get_professional_css()}
     </style>
@@ -87,7 +116,7 @@ class HTMLReportGenerator:
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <h1>Data Pipeline Execution Report</h1>
+                <h1>{report_title}</h1>
                 <div class="header-meta">
                     <span><strong>Pipeline:</strong> {pipeline_name}</span>
                     <span><strong>Execution ID:</strong> {execution_id}</span>
@@ -119,13 +148,8 @@ class HTMLReportGenerator:
                 </div>
             </div>
             
-            <!-- Data Flow Summary -->
-            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                    {self._render_data_flow_cards(stages)}
-                </div>
-            </div>
+            <!-- Data Flow Summary (solo si include_stages) -->
+            {self._render_data_flow_section(stages) if include_stages else ''}
         </section>
         
         <!-- Validation Results -->
@@ -147,14 +171,10 @@ class HTMLReportGenerator:
             </div>
             
             {suites_html}
-            {failures_html}
+            {detailed_failures_html}
         </section>
         
-        <!-- Pipeline Stages -->
-        <section class="stages-section">
-            <h2>Pipeline Stages</h2>
-            {stages_html}
-        </section>
+        {stages_section}
         
         <!-- Footer -->
         <footer class="footer">
@@ -526,41 +546,55 @@ class HTMLReportGenerator:
         else:
             return 'quality-poor'
     
-    def _group_by_suite(self, validation_results: list) -> dict:
-        """Agrupar validation results por suite"""
+    def _group_by_suite_from_summary(self, validation_summary: list) -> dict:
+        """Agrupar usando validation_summary (datos ya agregados en BD)"""
         suites = {}
-        for result in validation_results:
-            suite_name = result['rule_name']
-            if suite_name not in suites:
-                suites[suite_name] = {
+        
+        for summary in validation_summary:
+            suite_name = summary.get('suite_name', 'Unknown')
+            dataset_name = summary.get('dataset_name', '')
+            
+            # Usar dataset como diferenciador visual si existe
+            if dataset_name and dataset_name != 'Unknown':
+                display_name = f"{suite_name} <span style='color:#6c757d; font-size:0.85em'>({dataset_name})</span>"
+            else:
+                display_name = suite_name
+            
+            if display_name not in suites:
+                suites[display_name] = {
                     'name': suite_name,
-                    'type': result['rule_type'],
+                    'dataset': dataset_name,
+                    'type': 'great_expectations',
                     'passed': 0,
                     'failed': 0,
-                    'total': 0,
-                    'failures': []
+                    'total': 0
                 }
             
-            if result['passed']:
-                suites[suite_name]['passed'] += 1
-            else:
-                # Contar 1 expectativa fallida, no el número de registros afectados
-                suites[suite_name]['failed'] += 1
-                suites[suite_name]['failures'].extend(result.get('failure_details', []))
-            
-            suites[suite_name]['total'] = suites[suite_name]['passed'] + suites[suite_name]['failed']
+            # Acumular conteos
+            suites[display_name]['passed'] += summary.get('passed_validations', 0)
+            suites[display_name]['failed'] += summary.get('failed_validations', 0)
+            suites[display_name]['total'] += summary.get('total_validations', 0)
         
         return suites
     
     def _render_suites(self, suites: dict) -> str:
-        """Renderizar tabla de suites"""
+        """Renderizar tabla de suites ordenada alfabéticamente"""
         if not suites:
             return ""
         
+        # Ordenar suites alfabéticamente por nombre
+        sorted_suites = sorted(suites.items(), key=lambda x: x[0])
+        
         rows = []
-        for suite_name, data in suites.items():
+        for suite_name, data in sorted_suites:
             success_rate = (data['passed'] / data['total'] * 100) if data['total'] > 0 else 0
-            status = '✓' if success_rate == 100 else '⚠' if success_rate >= 50 else '✗'
+            # Solo usar warning o error si realmente hubo fallos
+            if data['failed'] > 0:
+                 status = '✗'
+                 status_color = '#dc3545'
+            else:
+                 status = '✓'
+                 status_color = '#28a745'
             
             rows.append(f"""
             <tr>
@@ -569,7 +603,9 @@ class HTMLReportGenerator:
                 <td style="text-align: center; color: #28a745; font-weight: 600;">{data['passed']}</td>
                 <td style="text-align: center; color: #dc3545; font-weight: 600;">{data['failed']}</td>
                 <td style="text-align: center; font-weight: 600;">{data['total']}</td>
-                <td style="text-align: center;">{success_rate:.1f}%</td>
+                <td style="text-align: center;">
+                   <span style="color: {status_color}; font-weight: bold;">{success_rate:.1f}%</span>
+                </td>
             </tr>
             """)
         
@@ -591,198 +627,66 @@ class HTMLReportGenerator:
         </table>
         """
     
-    def _render_failures_table(self, validation_results: list) -> str:
-        """Renderizar tabla detallada de fallos con explicaciones claras"""
-        failures = []
-        for result in validation_results:
-            if not result['passed'] and result.get('failure_details'):
-                for detail in result['failure_details']:
-                    failures.append({
-                        'suite': result['rule_name'],
-                        'detail': detail
-                    })
+    def _render_failures_summary(self, suites: dict) -> str:
+        """Renderizar resumen de fallos agrupado por suite (simple y directo)"""
+        failed_suites = {name: data for name, data in suites.items() if data['failed'] > 0}
         
-        if not failures:
+        if not failed_suites:
             return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente</div>'
         
-        # Procesar todos los failures primero
-        processed_failures = []
-        seen_failures = set()  # Para evitar duplicados
-        
-        for item in failures:
-            detail = item['detail']
-            exp_type = detail.get('expectation_type', 'N/A')
-            kwargs = detail.get('kwargs', {})
-            column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
-            
-            # Descripción legible de la validación con análisis de ataques
-            description = self._get_expectation_description(exp_type, kwargs, detail)
-            
-            # Métricas
-            unexpected_count = detail.get('unexpected_count', 0) or 0
-            unexpected_percent = detail.get('unexpected_percent') or 0.0
-            element_count = detail.get('element_count', 0) or 0
-            
-            # Convertir a números
-            try:
-                unexpected_count = int(unexpected_count)
-                element_count = int(element_count)
-                unexpected_percent = float(unexpected_percent)
-            except:
-                unexpected_count = 0
-                element_count = 0
-                unexpected_percent = 0.0
-            
-            # Clasificar si es validación table-level o record-level
-            is_table_level = exp_type in [
-                'expect_table_row_count_to_be_between',
-                'expect_table_column_count_to_equal',
-                'expect_table_columns_to_match_ordered_list',
-                'expect_column_mean_to_be_between',
-                'expect_column_stdev_to_be_between'
-            ]
-            
-            # Para table-level, mostrar con métricas diferentes
-            if is_table_level:
-                # Usar element_count como total de registros
-                if element_count > 0:
-                    affected_display = f"Toda la tabla ({element_count:,} registros)"
-                    impact_display = "100%"
-                    severity = 'critical'
-                    severity_label = 'CRÍTICO'
-                    severity_color = '#dc3545'
-                else:
-                    affected_display = "Toda la tabla"
-                    impact_display = "100%"
-                    severity = 'high'
-                    severity_label = 'ALTO'
-                    severity_color = '#fd7e14'
-            else:
-                # Validaciones a nivel de registro
-                if element_count > 0:
-                    affected_display = f"{unexpected_count:,} / {element_count:,}"
-                    impact_display = f"{unexpected_percent:.1f}%"
-                else:
-                    # Cuando no hay element_count, mostrar observed_value si está disponible
-                    observed_value = detail.get('observed_value')
-                    if observed_value is not None:
-                        if isinstance(observed_value, dict):
-                            # Para quantiles, mostrar valores observados vs esperados
-                            if 'quantiles' in observed_value and 'values' in observed_value:
-                                quantiles = observed_value.get('quantiles', [])
-                                values = observed_value.get('values', [])
-                                # Obtener rangos esperados
-                                value_ranges = kwargs.get('quantile_ranges', {}).get('value_ranges', [])
-                                details_str = []
-                                for i, (q, v) in enumerate(zip(quantiles, values)):
-                                    expected = value_ranges[i] if i < len(value_ranges) else [None, None]
-                                    q_pct = int(q * 100)
-                                    details_str.append(f"P{q_pct}: {v:.2f} (esperado: {expected[0]}-{expected[1]})")
-                                affected_display = "; ".join(details_str)
-                            else:
-                                affected_display = f"Valor observado: {observed_value}"
-                        elif isinstance(observed_value, (int, float)):
-                            affected_display = f"Valor observado: {observed_value:,}"
-                        else:
-                            affected_display = f"Condición no cumplida"
-                    else:
-                        affected_display = "N/A"
-                    impact_display = "N/A"
-                
-                # Severity basada en porcentaje o tipo de validación
-                if unexpected_percent > 10:
-                    severity = 'critical'
-                    severity_label = 'CRÍTICO'
-                    severity_color = '#dc3545'
-                elif unexpected_percent > 5:
-                    severity = 'high'
-                    severity_label = 'ALTO'
-                    severity_color = '#fd7e14'
-                elif element_count == 0:  # Sin métricas específicas
-                    severity = 'medium'
-                    severity_label = 'MEDIO'
-                    severity_color = '#ffc107'
-                else:
-                    severity = 'medium'
-                    severity_label = 'MEDIO'
-                    severity_color = '#ffc107'
-            
-            # Formatear columna
-            if isinstance(column, list):
-                column_display = ', '.join(str(c) for c in column)
-            else:
-                column_display = str(column)
-            
-            # Evitar duplicados - incluir kwargs relevantes para distinguir expectativas diferentes
-            # Por ejemplo: misma columna con diferentes regex o diferentes value_set
-            kwargs_key = f"{kwargs.get('regex', '')}{kwargs.get('value_set', '')}{kwargs.get('row_condition', '')}{kwargs.get('mostly', '')}"
-            failure_key = f"{item['suite']}:{column_display}:{exp_type}:{kwargs_key}"
-            if failure_key in seen_failures:
-                continue
-            seen_failures.add(failure_key)
-            
-            # Almacenar información procesada para ordenar después
-            processed_failures.append({
-                'suite': item['suite'],
-                'column_display': column_display,
-                'description': description,
-                'severity': severity,
-                'severity_label': severity_label,
-                'severity_color': severity_color,
-                'affected_display': affected_display,
-                'impact_display': impact_display
-            })
-        
-        if not processed_failures:
-            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente (fallos sin impacto filtrados)</div>'
-        
-        # Ordenar alfabéticamente por Suite, luego por Columna(s)
-        processed_failures.sort(key=lambda x: (x['suite'].lower(), x['column_display'].lower()))
-        
-        # Generar filas HTML
         rows = []
-        for failure in processed_failures:
+        sorted_suites = sorted(failed_suites.items(), key=lambda x: x[1]['failed'], reverse=True)
+        
+        for suite_name, data in sorted_suites:
+            failed_count = data['failed']
+            total_count = data['total']
+            passed_count = data['passed']
+            failure_rate = (failed_count / total_count * 100) if total_count > 0 else 0
+            
+            # Color según severidad
+            if failure_rate > 50:
+                severity_color = '#dc3545'
+                severity_label = 'CRÍTICO'
+            elif failure_rate > 20:
+                severity_color = '#fd7e14'
+                severity_label = 'ALTO'
+            else:
+                severity_color = '#ffc107'
+                severity_label = 'MEDIO'
+            
             rows.append(f"""
-            <tr style="border-left: 4px solid {failure['severity_color']};">
-                <td>
-                    <strong style="color: #0f3460;">{failure['suite']}</strong>
-                </td>
-                <td>
-                    <span style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">
-                        {failure['column_display']}
-                    </span>
-                </td>
-                <td style="font-size: 0.95em;">
-                    {failure['description']}
-                </td>
+            <tr style="border-left: 4px solid {severity_color};">
+                <td><strong style="color: #0f3460;">{suite_name}</strong></td>
                 <td style="text-align: center;">
-                    <span style="background: {failure['severity_color']}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
-                        {failure['severity_label']}
+                    <span style="background: {severity_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
+                        {severity_label}
                     </span>
                 </td>
-                <td style="text-align: right; font-family: monospace;">
-                    {failure['affected_display']}
-                </td>
-                <td style="text-align: right;">
-                    <strong style="color: #dc3545; font-size: 1.1em;">{failure['impact_display']}</strong>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">{passed_count}</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">{failed_count}</td>
+                <td style="text-align: center; font-weight: 600;">{total_count}</td>
+                <td style="text-align: center;">
+                    <strong style="color: {severity_color}; font-size: 1.1em;">{failure_rate:.1f}%</strong>
                 </td>
             </tr>
             """)
         
+        total_failures = sum(data['failed'] for data in failed_suites.values())
+        
         return f"""
         <div style="margin-top: 30px;">
             <h3 style="color: #dc3545; font-size: 1.3em; margin-bottom: 20px;">
-                ⚠️ Detalle de Validaciones Fallidas ({len(rows)} problemas detectados)
+                ⚠️ Resumen de Validaciones Fallidas ({total_failures} problemas detectados)
             </h3>
             <table class="failures-table" style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <thead>
                     <tr style="background: #1a1a2e; color: white;">
-                        <th style="padding: 12px; text-align: left; width: 18%;">Suite</th>
-                        <th style="padding: 12px; text-align: left; width: 12%;">Columna(s)</th>
-                        <th style="padding: 12px; text-align: left; width: 40%;">¿Qué falló?</th>
-                        <th style="padding: 12px; text-align: center; width: 10%;">Severidad</th>
-                        <th style="padding: 12px; text-align: right; width: 12%;">Registros Afectados</th>
-                        <th style="padding: 12px; text-align: right; width: 8%;">Impacto</th>
+                        <th style="padding: 12px; text-align: left; width:30%;">Suite</th>
+                        <th style="padding: 12px; text-align: center; width: 15%;">Severidad</th>
+                        <th style="padding: 12px; text-align: center; width: 13%;">Pasadas</th>
+                        <th style="padding: 12px; text-align: center; width: 13%;">Fallidas</th>
+                        <th style="padding: 12px; text-align: center; width: 13%;">Total</th>
+                        <th style="padding: 12px; text-align: center; width: 16%;">Tasa de Fallo</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -792,171 +696,265 @@ class HTMLReportGenerator:
         </div>
         """
     
-    def _get_expectation_description(self, exp_type: str, kwargs: dict, failed_detail: dict = None) -> str:
-        """Generar descripción legible de una expectativa"""
-        column = kwargs.get('column', 'N/A')
+    def _render_detailed_failures(self, validation_results: list) -> str:
+        """Renderizar tabla detallada de todos los fallos individuales sin ocultar información con diseño en acordeón"""
         
-        # Detectar si es una validación de seguridad combinada
-        if exp_type == 'expect_column_values_to_not_match_regex':
-            regex = kwargs.get('regex', '')
-            # Si el regex contiene alternación (|), es probable que sea un pattern combinado
-            if '|' in regex and len(regex) > 200:
-                # Es una validación de seguridad combinada - analizar qué ataques específicos se detectaron
-                detected_attacks = self._analyze_security_failures(failed_detail) if failed_detail else []
+        if not validation_results:
+            return ""
+        
+        # Filtrar solo los fallos
+        failed_results = [item for item in validation_results if not item.get('passed', True)]
+        
+        if not failed_results:
+            return ""
+        
+        # Agrupar fallos por Suite/Dataset
+        grouped_failures = {}
+        for item in failed_results:
+            # Obtener datos básicos del registro
+            suite = item.get('suite_name', 'Default Suite')
+            dataset_name = item.get('dataset_name', '')
+            group_key = f"{suite}|{dataset_name}"
+            
+            if group_key not in grouped_failures:
+                grouped_failures[group_key] = []
+            
+            grouped_failures[group_key].append(item)
+            
+        
+        table_rows = []
+        group_id_counter = 0
+
+        for key, failures in grouped_failures.items():
+            suite_name, dataset_name = key.split('|')
+            group_id_counter += 1
+            group_id = f"group_{group_id_counter}"
+            
+            count = len(failures)
+            
+            # Fila Principal (Encabezado del Grupo)
+            table_rows.append(f"""
+            <tr class="group-header" onclick="toggleGroup('{group_id}')" style="background: #e9ecef; cursor: pointer; border-bottom: 2px solid #dee2e6;">
+                <td colspan="5" style="padding: 12px 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 1.1em; font-weight: bold; color: #343a40;">{suite_name}</span>
+                            <span style="margin-left: 10px; font-size: 0.9em; color: #6c757d; font-family: monospace;">{dataset_name}</span>
+                        </div>
+                        <div>
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">{count} fallos</span>
+                            <span style="margin-left: 10px; font-size: 0.8em; color: #6c757d;">▼</span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            """)
+            
+            # Encabezado de la tabla interna (solo aparece una vez por grupo)
+            table_rows.append(f"""
+            <tr class="detail-row {group_id}" style="display: none; background: #f8f9fa;">
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;"></th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Columna</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Detalle del Error</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:center;">Severidad</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:right;">Registros</th>
+            </tr>
+            """)
+            
+            # Filas de Detalle (Ocultas por defecto)
+            detail_rows = []
+            for item in failures:
+                # ... (resto de lógica igual) ...
+                exp_type = item.get('expectation_type', 'N/A')
+                failure_details = item.get('failure_details', [])
+                if not failure_details: failure_details = [{}]
+                if isinstance(failure_details, dict): failure_details = [failure_details]
                 
-                if detected_attacks:
-                    attacks_list = ', '.join(f"<strong>{attack}</strong>" for attack in detected_attacks[:5])
-                    return f"<strong>Vulnerabilidades detectadas:</strong> {attacks_list}" + (" y más..." if len(detected_attacks) > 5 else "")
-                else:
-                    return "<strong>Vulnerabilidades de seguridad detectadas</strong>: Patrones maliciosos encontrados (SQL injection, XSS, command injection, data leakage, u otros ataques OWASP Top 10)"
-            elif len(regex) <= 80:
-                return f"Se encontraron valores que coinciden con el patrón prohibido: <code>{regex}</code>"
-            else:
-                return f"Se encontraron valores que coinciden con el patrón prohibido: <code>{regex[:80]}...</code>"
-        
-        # Mapeo de expectativas a descripciones claras
-        descriptions = {
-            'expect_column_values_to_match_regex': 
-                f"Valores no cumplen el formato esperado: <code>{kwargs.get('regex', 'N/A')[:80]}</code>",
+                for detail in failure_details:
+                    kwargs = detail.get('kwargs', {})
+                    if not kwargs and 'rule_name' in item: kwargs['expectation_type'] = item['rule_name']
+                    
+                    column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
+                    if not column or column == 'N/A': column = "Tabla Completa"
+                    
+                    # Descripción legible usando el Formatter Modular (Se pasa todo el objeto 'detail')
+                    description = ValidationFormatter.get_description(exp_type, detail)
+                    
+                    # Métricas específicas (Priorizar datos del resultado directo)
+                    result_info = detail.get('result', {})
+                    unexpected_count = result_info.get('unexpected_count', detail.get('unexpected_count', item.get('failed_count', 0)))
+                    element_count = result_info.get('element_count', detail.get('element_count', item.get('total_records', 0)))
+                    
+                    if element_count and element_count > 0:
+                        affected_display = f"{unexpected_count:,} / {element_count:,}"
+                    else:
+                        affected_display = str(unexpected_count) # Fallback si no hay total
+                    
+                     # Formatear columna para display
+                    if isinstance(column, list):
+                        column_display = ', '.join(str(c) for c in column)
+                    else:
+                        column_display = str(column)
+
+                    severity = item.get('severity', 'error')
+                    severity_color = '#dc3545' if severity == 'critical' else '#fd7e14' if severity == 'error' else '#ffc107'
+                    severity_label = severity.upper()
+
+                    detail_rows.append(f"""
+                    <tr class="detail-row {group_id}" style="display: none; background: white; border-bottom: 1px solid #f1f2f3;">
+                        <td style="width: 20px; border-left: 4px solid {severity_color};"></td>
+                        <td style="padding: 10px 15px; width: 20%;">
+                            <code style="color: #e83e8c;">{column_display}</code>
+                        </td>
+                        <td style="padding: 10px 15px;">{description}</td>
+                        <td style="padding: 10px 15px; text-align: center;">
+                            <span style="color: {severity_color}; font-weight: bold; font-size: 0.8em;">{severity_label}</span>
+                        </td>
+                        <td style="padding: 10px 15px; text-align: right; font-family: monospace;">{affected_display}</td>
+                    </tr>
+                    """)
             
-            'expect_column_values_to_be_in_set': 
-                f"Valores fuera del conjunto permitido: {kwargs.get('value_set', [])}",
+            table_rows.extend(detail_rows)
+
+        return f"""
+        <div style="margin-top: 40px;">
+            <h3 style="color: #343a40; font-size: 1.2em; margin-bottom: 15px;">
+                📋 Detalle de Validaciones Fallidas
+            </h3>
+            <table style="width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                { ''.join(table_rows) }
+            </table>
             
-            'expect_column_values_to_not_be_in_set': 
-                f"Se encontraron valores prohibidos del conjunto: {kwargs.get('value_set', [])}",
-            
-            'expect_column_values_to_be_between': 
-                f"Valores fuera del rango [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
-            
-            'expect_column_mean_to_be_between': 
-                f"Promedio de columna fuera del rango esperado [{kwargs.get('min_value', 'N/A')}, {kwargs.get('max_value', 'N/A')}]",
-            
-            'expect_column_quantile_values_to_be_between': 
-                f"Percentiles fuera de rangos esperados (outliers detectados)",
-            
-            'expect_compound_columns_to_be_unique': 
-                f"Se encontraron registros duplicados por la combinación de columnas: {kwargs.get('column_list', [])}",
-            
-            'expect_column_values_to_not_be_null': 
-                f"Se encontraron valores nulos en columna que no debe tenerlos",
-            
-            'expect_column_values_to_be_unique': 
-                f"Se encontraron valores duplicados (debe ser única)",
-            
-            'expect_column_proportion_of_unique_values_to_be_between': 
-                f"Proporción de valores únicos fuera de rango: [{kwargs.get('min_value', 0)*100:.0f}%, {kwargs.get('max_value', 1)*100:.0f}%]",
-            
-            'expect_table_row_count_to_be_between': 
-                f"Número de filas fuera de rango [{self._format_number(kwargs.get('min_value'))}, {self._format_number(kwargs.get('max_value'))}]",
-            
-            'expect_table_column_count_to_equal': 
-                f"Número de columnas diferente al esperado ({kwargs.get('value', 'N/A')})",
-            
-            'expect_table_columns_to_match_ordered_list': 
-                f"Las columnas no coinciden con la estructura esperada"
-        }
-        
-        # Buscar descripción
-        description = descriptions.get(exp_type)
-        if description:
-            return description
-        
-        # Fallback genérico
-        simple_name = exp_type.replace('expect_column_values_to_', '').replace('expect_column_', '').replace('expect_table_', '').replace('_', ' ').title()
-        return f"Validación '{simple_name}' falló"
-    
-    def _analyze_security_failures(self, failed_detail: dict) -> List[str]:
+            <script>
+            function toggleGroup(groupId) {{
+                var rows = document.getElementsByClassName(groupId);
+                for(var i = 0; i < rows.length; i++) {{
+                    rows[i].style.display = rows[i].style.display === 'none' ? 'table-row' : 'none';
+                }}
+            }}
+            </script>
+        </div>
         """
-        Analizar valores fallidos para determinar qué ataques específicos se detectaron.
-        
-        Args:
-            failed_detail: Diccionario con detalles del fallo (incluye partial_unexpected_list)
-        
-        Returns:
-            Lista de nombres de ataques detectados
-        """
-        # Mapeo de patterns a nombres legibles (sin flags inline, se usan parámetros)
-        SECURITY_PATTERNS = {
-            # A03:2021 - Injection (case-insensitive)
-            r"(?:'|--|;|\/\*|\*\/|union\s+select|insert\s+into|delete\s+from|drop\s+table|update\s+.+set|exec\s*\(|execute\s*\(|xp_cmdshell|sp_executesql)": ("SQL Injection", re.IGNORECASE),
-            r"(?:or\s+1\s*=\s*1|and\s+1\s*=\s*1|having\s+1\s*=\s*1|waitfor\s+delay|benchmark\s*\(|sleep\s*\(|pg_sleep)": ("SQL Injection (Advanced)", re.IGNORECASE),
-            r"(?:\$ne|\$gt|\$lt|\$gte|\$lte|\$in|\$nin|\$where|\$regex|\$options|\$expr|\$jsonSchema)": ("NoSQL Injection", 0),
-            r"(?:!!python/|!!map|!!omap|!!pairs|__import__|eval\(|exec\()": ("YAML Injection", 0),
-            r"(?:\{\{|\}\}|\{%|%\}|\$\{|<%|%>|#\{)": ("Template Injection (SSTI)", 0),
-            r"(?:;|\||&&|\n|\r|`|\$\(|>\s*\/|<\s*\/|wget\s|curl\s|nc\s|bash\s|sh\s|cmd\s|powershell\s|eval\s|exec\s)": ("Command Injection", 0),
-            r"^[=+\-@]": ("CSV Injection", 0),
-            
-            # A03:2021 - XSS (case-insensitive)
-            r"(?:<script[^>]*>|<\/script>|javascript:|onerror\s*=|onload\s*=|<iframe|<object|<embed)": ("XSS (Cross-Site Scripting)", re.IGNORECASE),
-            r"(?:<img[^>]+src|<svg[^>]*>|<math[^>]*>|<video[^>]*>|<audio[^>]*>|<link[^>]+href|vbscript:|livescript:|mocha:|data:text/html)": ("XSS (Advanced)", re.IGNORECASE),
-            r"on(?:abort|blur|change|click|dblclick|error|focus|keydown|keypress|keyup|load|mousedown|mousemove|mouseout|mouseover|mouseup|reset|resize|select|submit|unload)\s*=": ("XSS (Event Handlers)", re.IGNORECASE),
-            
-            # A04:2021 - Path Traversal
-            r"(?:\.\.\/|\.\.\\|%2e%2e%2f|%2e%2e%5c|..%2f|..%5c|\.\\.%252f)": ("Path Traversal", 0),
-            r"(?:[C-Z]:\\|\\\\)": ("Path Traversal (Windows)", 0),
-            r"(?:%00|\\x00)": ("Null Byte Injection", 0),
-            r"(?:file://|php://|zip://|data://|expect://|input://)": ("File Inclusion", 0),
-            
-            # A02:2021 - Data Leakage
-            r"(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token)\s*[:=]\s*['\"]?[a-zA-Z0-9_-]{20,}['\"]?": ("API Key Exposure", re.IGNORECASE),
-            r"(?:AKIA|ASIA)[0-9A-Z]{16}": ("AWS Access Key", 0),
-            r"aws.{0,20}?['\"][0-9a-zA-Z/+=]{40}['\"]": ("AWS Secret Key", re.IGNORECASE),
-            r"ghp_[0-9a-zA-Z]{36}|gho_[0-9a-zA-Z]{36}|ghu_[0-9a-zA-Z]{36}|ghs_[0-9a-zA-Z]{36}|ghr_[0-9a-zA-Z]{36}": ("GitHub Token", 0),
-            r"xox[pboa]-[0-9]{12}-[0-9]{12}-[0-9a-zA-Z]{24,32}": ("Slack Token", 0),
-            r"AIza[0-9A-Za-z\\-_]{35}": ("Google API Key", 0),
-            r"(?:-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----)": ("Private Key (RSA/DSA/EC)", 0),
-            r"(?:ssh-rsa |ssh-dss |ecdsa-sha2-nistp256 )AAAA[0-9A-Za-z+/]+": ("SSH Key", 0),
-            r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+": ("JWT Token", 0),
-            r"bearer\s+[a-zA-Z0-9_\-\.=]+": ("Bearer Token", re.IGNORECASE),
-            r"(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?": ("Password Pattern", re.IGNORECASE),
-            r"(?:server|host|database|uid|pwd|password)\s*=": ("Connection String", re.IGNORECASE),
-            r"\b\d{3}-\d{2}-\d{4}\b": ("SSN (Social Security Number)", 0),
-            r"\b(?:\d{4}[\s-]?){3}\d{4}\b": ("Credit Card Number", 0),
-            
-            # A10:2021 - SSRF
-            r"(?:localhost|127\.0\.0\.1|169\.254|metadata|internal)": ("SSRF Patterns", 0),
-            
-            # Extended
-            r"(?:<!ENTITY|<!DOCTYPE|SYSTEM\s+['\"]|PUBLIC\s+['\"])": ("XXE Injection", 0),
-            r"(?:\r\n|\n|%0d|%0a)(?:Content-Type|Set-Cookie|Location):": ("HTTP Header Injection", 0),
-            r"(?:\r\n|\n|%0d|%0a)(?:To:|From:|Cc:|Bcc:|Subject:)": ("Email Header Injection", 0),
-            r"(?:%0d|%0a|\\r|\\n|\r\n)": ("CRLF Injection", 0),
-            r"(?:java\.lang\.Runtime|ProcessBuilder|ObjectInputStream)": ("Java Deserialization", 0),
-            r"(?:__reduce__|__setstate__|pickle|marshal|yaml\.load|eval\(|exec\()": ("Python Deserialization", 0),
-            r"(?:admin|root|sudo|system|administrator|superuser|sa\b)": ("Privilege Escalation Attempt", re.IGNORECASE)
-        }
-        
-        # Obtener valores que fallaron
-        unexpected_values = failed_detail.get('partial_unexpected_list', []) if failed_detail else []
-        
-        if not unexpected_values:
-            return []
-        
-        # Convertir a strings si no lo son
-        unexpected_values = [str(v) for v in unexpected_values if v is not None]
-        
-        # Analizar qué patterns coinciden
-        detected_attacks = set()
-        
-        for value in unexpected_values:
-            for pattern, (attack_name, flags) in SECURITY_PATTERNS.items():
-                try:
-                    if re.search(pattern, value, flags=flags):
-                        detected_attacks.add(attack_name)
-                except re.error:
-                    continue
-        
-        return sorted(list(detected_attacks))
     
     def _format_number(self, value) -> str:
-        """Formatear número con separadores de miles, o retornar string si no es número"""
+        """Formatear número con separadores de miles"""
         if value is None or value == 'N/A':
             return 'N/A'
         try:
             return f"{int(value):,}"
         except (ValueError, TypeError):
             return str(value)
-        return f"Validación '{simple_name}' falló"
+    
+    def _render_data_flow_section(self, stages: dict) -> str:
+        """Renderizar sección completa de Data Flow"""
+        cards = self._render_data_flow_cards(stages)
+        return f"""
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    {cards}
+                </div>
+            </div>
+        """
+    
+    def _render_data_flow_cards(self, stages: dict) -> str:
+        """Renderizar tarjetas de flujo de datos"""
+        cards = []
+        
+        stage_order = ["INGESTION", "VALIDATION", "TRANSFORMATION", "OUTPUT"]
+        stage_icons = {
+            "INGESTION": "📥",
+            "VALIDATION": "✓",
+            "TRANSFORMATION": "⚙️",
+            "OUTPUT": "📤"
+        }
+        
+        for stage_name in stage_order:
+            if stage_name in stages:
+                data = stages[stage_name]
+                records = data.get('records_output', 0)
+                icon = stage_icons.get(stage_name, "•")
+                
+                cards.append(f"""
+                <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 1.5em; margin-bottom: 5px;">{icon}</div>
+                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">{stage_name}</div>
+                    <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">{records:,}</div>
+                    <div style="font-size: 0.7em; color: #6c757d;">records</div>
+                </div>
+                """)
+        
+        return ''.join(cards)
+    
+    def _render_stages(self, stages: dict) -> str:
+        """Renderizar tabla de stages"""
+        if not stages:
+            return ""
+        
+        rows = []
+        for stage_name, data in stages.items():
+            duration = data.get('duration_seconds', 0)
+            records_in = data.get('records_input', 0)
+            records_out = data.get('records_output', 0)
+            errors = len(data.get('errors', []))
+            
+            status = '✓' if errors == 0 else '✗'
+            status_color = '#28a745' if errors == 0 else '#dc3545'
+            
+            # Explicación contextual por etapa
+            if stage_name == "INGESTION":
+                context = "Loaded from sources"
+            elif stage_name == "VALIDATION":
+                context = f"{data.get('validations_passed', 0)}/{data.get('validations_passed', 0) + data.get('validations_failed', 0)} validations passed"
+            elif stage_name == "TRANSFORMATION":
+                context = "Filtered & transformed"
+            elif stage_name == "OUTPUT":
+                context = "Written to targets"
+            else:
+                context = ""
+            
+            rows.append(f"""
+            <tr>
+                <td><span class="stage-name">{stage_name}</span></td>
+                <td style="text-align: right;">{duration:.2f}s</td>
+                <td style="text-align: right;">{records_in:,}</td>
+                <td style="text-align: right;">{records_out:,}</td>
+                <td style="font-size: 0.85em; color: #6c757d;">{context}</td>
+                <td style="text-align: right; color: {status_color};">{errors}</td>
+                <td style="text-align: center; font-size: 1.2em; color: {status_color};">{status}</td>
+            </tr>
+            """)
+        
+        return f"""
+        <table class="stages-table">
+            <thead>
+                <tr>
+                    <th>Stage</th>
+                    <th style="text-align: right;">Duration</th>
+                    <th style="text-align: right;">Records In</th>
+                    <th style="text-align: right;">Records Out</th>
+                    <th>Context</th>
+                    <th style="text-align: right;">Errors</th>
+                    <th style="text-align: center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        """
+    
+    def _render_data_flow_section(self, stages: dict) -> str:
+        """Renderizar sección completa de Data Flow"""
+        cards = self._render_data_flow_cards(stages)
+        return f"""
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    {cards}
+                </div>
+            </div>
+        """
     
     def _render_data_flow_cards(self, stages: dict) -> str:
         """Renderizar tarjetas de flujo de datos"""

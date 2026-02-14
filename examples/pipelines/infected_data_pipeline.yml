@@ -15,7 +15,7 @@
 # ============================================================================
 
 pipeline:
-  name: "CustomerTransactionPipeline"
+  name: "InfectedCustomerPipeline"
   description: "Pipeline completo de datos de clientes y transacciones"
   schedule: "@daily"
 
@@ -329,7 +329,7 @@ output:
 # CONFIGURATION
 # ============================================================================
 airflow:
-  dag_id: "customer_transaction_pipeline"
+  dag_id: "infected_customer_transaction_pipeline"
   default_args:
     owner: "data_team"
     email_on_failure: true

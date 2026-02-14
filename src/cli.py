@@ -171,9 +171,18 @@ def infect(config_path: str, dry_run: bool):
               type=click.Path(exists=True),
               help='Ruta al archivo YAML de configuración')
 @click.option('-n', '--name', help='Nombre del pipeline (opcional)')
+@click.option('--stage', type=click.Choice(['ingestion', 'validation', 'transformation', 'output']),
+              help='Ejecutar solo una etapa específica (requiere estado previo)')
 @click.option('--dry-run', is_flag=True, help='Simular ejecución')
-def run_pipeline(config_path: str, name: Optional[str], dry_run: bool):
-    """Ejecutar pipeline desde archivo YAML."""
+def run_pipeline(config_path: str, name: Optional[str], stage: Optional[str], dry_run: bool):
+    """Ejecutar pipeline desde archivo YAML.
+    
+    Puede ejecutar el pipeline completo o etapas individuales:
+    - ingestion: Cargar datos desde fuentes
+    - validation: Validar esquema y calidad
+    - transformation: Aplicar transformaciones
+    - output: Escribir resultados
+    """
     try:
         # Cargar configuración
         yaml_path = Path(config_path)
@@ -186,12 +195,15 @@ def run_pipeline(config_path: str, name: Optional[str], dry_run: bool):
         click.echo(f"Executing pipeline: {pipeline_name}")
         click.echo(f"Config: {yaml_path}")
         
+        if stage:
+            click.echo(f"Stage: {stage} (individual execution)")
+        
         if dry_run:
             click.echo("(Dry run mode)")
         
         # Crear y ejecutar
         executor = PipelineExecutor(pipeline_name, pipeline_config)
-        result = executor.execute(dry_run=dry_run)
+        result = executor.execute(dry_run=dry_run, stage=stage)
         
         click.echo(f"\nExecution completed")
         click.echo(f"  Status: {result.status}")

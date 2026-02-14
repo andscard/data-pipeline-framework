@@ -8,12 +8,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database Configuration
+# IMPORTANTE: Todas las variables DEBEN estar definidas en .env
+# Sin valores por defecto para evitar conexiones incorrectas
+def _get_required_env(var_name: str) -> str:
+    """Obtiene variable de entorno requerida o lanza error si no existe"""
+    value = os.getenv(var_name)
+    if value is None:
+        raise EnvironmentError(
+            f"❌ Variable de entorno '{var_name}' NO encontrada en .env\n"
+            f"Por favor, asegúrate de que el archivo .env existe y contiene esta variable."
+        )
+    return value
+
 POSTGRES_CONFIG = {
-    'host': os.getenv('POSTGRES_HOST', 'localhost'),
-    'port': int(os.getenv('POSTGRES_PORT', 5433)),
-    'database': os.getenv('POSTGRES_DB', 'pipeline_db'),
-    'user': os.getenv('POSTGRES_USER', 'admin'),
-    'password': os.getenv('POSTGRES_PASSWORD', 'secret_password')
+    'host': _get_required_env('POSTGRES_HOST'),
+    'port': int(_get_required_env('POSTGRES_PORT')),
+    'database': _get_required_env('POSTGRES_DB'),
+    'user': _get_required_env('POSTGRES_USER'),
+    'password': _get_required_env('POSTGRES_PASSWORD')
 }
 
 REDIS_CONFIG = {

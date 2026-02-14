@@ -10,12 +10,6 @@ Comando global disponible después de ejecutar `setup.ps1`:
 data-framework <command> [options]
 ```
 
-Método tradicional (requiere activación de entorno virtual):
-
-```bash
-python -m src.cli <command> [options]
-```
-
 ## Comandos
 
 ### run pipeline
@@ -31,7 +25,7 @@ data-framework run pipeline -c <config_file>
 
 **Ejemplo:**
 ```bash
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 ```
 
 **Salida:**
@@ -75,7 +69,7 @@ Execution completed
 
 **Relacionado:**
 - [ARCHITECTURE.md](ARCHITECTURE.md#pipeline-executor) - Flujo de ejecución del pipeline
-- [examples/complete_pipeline.yml](../examples/complete_pipeline.yml) - Ejemplo de configuración
+- [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.yml) - Ejemplo de configuración
 
 ---
 
@@ -245,7 +239,7 @@ python scripts/generate_sample_data.py
 data-framework infect -c examples/infection_config.yml
 
 # 3. Ejecutar pipeline de validación
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # 4. Revisar hallazgos de seguridad en reporte
 start reports\execution_*.html
@@ -270,7 +264,7 @@ data-framework --version             # Mostrar versión del framework
 
 ### Configuración de Pipeline
 
-**Ubicación:** `examples/complete_pipeline.yml`
+**Ubicación:** `examples/pipelines/data_pipeline.yml`
 
 **Estructura:**
 ```yaml
@@ -290,7 +284,7 @@ transformation:
 outputs: [...]
 ```
 
-Ver [examples/complete_pipeline.yml](../examples/complete_pipeline.yml) para ejemplo completo.
+Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.yml) para ejemplo completo.
 
 ### Configuración de Infección
 
@@ -384,7 +378,7 @@ docker exec framework_postgres psql -U admin -d data_framework -c "SELECT 1;"
 **Solución:**
 ```bash
 # Ejecutar pipeline primero para generar datos
-data-framework run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # Luego exportar
 data-framework export-logs -n CustomerDataPipeline
@@ -434,7 +428,7 @@ Si no se usa el comando global, activar entorno virtual:
 .venv\Scripts\Activate.ps1
 
 # Ejecutar comando
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 ```
 
 ```bash
@@ -442,5 +436,5 @@ python -m src.cli run pipeline -c examples/complete_pipeline.yml
 source .venv/bin/activate
 
 # Ejecutar comando
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 ```

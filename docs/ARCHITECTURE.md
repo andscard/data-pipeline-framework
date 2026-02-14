@@ -237,7 +237,7 @@ outputs:                    # Destinos de exportación
     path: string
 ```
 
-Ver [examples/complete_pipeline.yml](../examples/complete_pipeline.yml) para ejemplo completo.
+Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.yml) para ejemplo completo.
 
 ## Arquitectura CLI
 

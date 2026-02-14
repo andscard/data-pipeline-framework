@@ -203,27 +203,53 @@ class PostgreSQLConnector(DataSourceConnector):
 
 # Factory function para facilitar creación
 def create_postgres_connector(
-    host: str = "localhost",
-    port: int = 5432,
-    database: str = "pipeline_db",
-    user: str = "admin",
-    password: str = "secret_password",
+    host: str = None,
+    port: int = None,
+    database: str = None,
+    user: str = None,
+    password: str = None,
     mode: str = "sqlalchemy"
 ) -> PostgreSQLConnector:
     """
     Factory function para crear un conector PostgreSQL.
     
+    Lee automáticamente desde variables de entorno si no se proporcionan valores.
+    
     Args:
-        host: Hostname de PostgreSQL
-        port: Puerto (default: 5432 - tu puerto personalizado)
-        database: Nombre de la base de datos
-        user: Usuario
-        password: Contraseña
+        host: Hostname de PostgreSQL (default: lee de POSTGRES_HOST en .env)
+        port: Puerto (default: lee de POSTGRES_PORT en .env)
+        database: Nombre de la base de datos (default: lee de POSTGRES_DB en .env)
+        user: Usuario (default: lee de POSTGRES_USER en .env)
+        password: Contraseña (default: lee de POSTGRES_PASSWORD en .env)
         mode: 'psycopg2' o 'sqlalchemy'
         
     Returns:
         PostgreSQLConnector configurado
     """
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # Usar valores de argumentos o leer de environment
+    host = host or os.getenv('POSTGRES_HOST')
+    port = port or (int(os.getenv('POSTGRES_PORT')) if os.getenv('POSTGRES_PORT') else None)
+    database = database or os.getenv('POSTGRES_DB')
+    user = user or os.getenv('POSTGRES_USER')
+    password = password or os.getenv('POSTGRES_PASSWORD')
+    
+    # Validar que todos los valores estén presentes
+    missing = []
+    if not host: missing.append('host/POSTGRES_HOST')
+    if not port: missing.append('port/POSTGRES_PORT')
+    if not database: missing.append('database/POSTGRES_DB')
+    if not user: missing.append('user/POSTGRES_USER')
+    if not password: missing.append('password/POSTGRES_PASSWORD')
+    
+    if missing:
+        raise ValueError(
+            f"❌ Parámetros requeridos faltantes: {', '.join(missing)}\n"
+            f"Proporciónalos como argumentos o defínelos en .env"
+        )
     config = {
         "host": host,
         "port": port,

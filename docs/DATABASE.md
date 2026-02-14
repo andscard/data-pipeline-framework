@@ -926,7 +926,7 @@ docker logs framework_postgres
 **Solución:**
 ```bash
 # 1. Ejecutar pipeline
-python -m src.cli run pipeline -c examples/complete_pipeline.yml
+data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # 2. Verificar estado nuevamente
 python scripts/db_utils.py status
