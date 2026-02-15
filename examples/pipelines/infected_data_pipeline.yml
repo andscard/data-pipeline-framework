@@ -212,6 +212,7 @@ validation:
         customer_id:
           type: uuid
           required: true
+          unique: false
         
         # ---- INFORMACIÓN TEMPORAL ----
         timestamp:
