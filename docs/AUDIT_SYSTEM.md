@@ -315,7 +315,7 @@ LIMIT 5;
 ## Mantenimiento
 
 ### Limpieza de Datos
-El script `scripts/db_utils.py` incluye utilidades de mantenimiento, o vía SQL:
+El script `scripts/utils_db.py` incluye utilidades de mantenimiento, o vía SQL:
 
 ```sql
 -- Eliminar ejecuciones antiguas (ej: > 90 días)

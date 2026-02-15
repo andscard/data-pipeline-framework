@@ -342,7 +342,7 @@ Ver [examples/pipelines/data_pipeline.yml](examples/pipelines/data_pipeline.yml)
 
 ```bash
 # Ver estado de tablas
-python scripts/db_utils.py status
+python scripts/utils_db.py status
 ```
 
 **Salida:**
@@ -374,16 +374,16 @@ python scripts/db_utils.py status
 
 ```bash
 # Ver ejecuciones de pipeline
-python scripts/db_utils.py executions
+python scripts/utils_db.py executions
 
 # Ver pipelines registrados
-python scripts/db_utils.py pipelines
+python scripts/utils_db.py pipelines
 
 # Ver estadísticas de base de datos
-python scripts/db_utils.py stats
+python scripts/utils_db.py stats
 
 # Limpiar datos de ejemplo
-python scripts/db_utils.py clean-samples
+python scripts/utils_db.py clean-samples
 ```
 
 Ver [docs/DATABASE.md](docs/DATABASE.md) para referencia completa.
@@ -461,7 +461,7 @@ docker-compose up -d postgres
 docker exec -i framework_postgres psql -U admin -d data_framework < scripts/init_db.sql
 
 # Verificar
-python scripts/db_utils.py status
+python scripts/utils_db.py status
 ```
 
 ### Generar Datos de Ejemplo

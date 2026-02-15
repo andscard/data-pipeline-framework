@@ -6,7 +6,7 @@ Guía completa para administrar la base de datos `data_framework` utilizando las
 
 ## 📋 Contenidos
 
-1. [Herramienta db_utils.py](#herramienta-db_utilspy)
+1. [Herramienta utils_db.py](#herramienta-utils_dbpy)
 2. [Comandos INFO](#comandos-info---consultar-información)
 3. [Comandos MAINTENANCE](#comandos-maintenance---mantenimiento)
 4. [Esquema de Base de Datos](#esquema-de-base-de-datos)
@@ -16,22 +16,22 @@ Guía completa para administrar la base de datos `data_framework` utilizando las
 
 ---
 
-## Herramienta db_utils.py
+## Herramienta utils_db.py
 
-**Ubicación:** `scripts/db_utils.py`
+**Ubicación:** `scripts/utils_db.py`
 
 Herramienta de línea de comandos para administrar la base de datos del framework sin necesidad de escribir SQL manualmente.
 
 ### Sintaxis General
 
 ```bash
-python scripts/db_utils.py <comando> [opciones]
+python scripts/utils_db.py <comando> [opciones]
 ```
 
 ### Ayuda
 
 ```bash
-python scripts/db_utils.py --help
+python scripts/utils_db.py --help
 ```
 
 ---
@@ -43,7 +43,7 @@ python scripts/db_utils.py --help
 Muestra el número de registros y tamaño en disco de todas las tablas en los esquemas `pipeline` y `sample_data`.
 
 ```bash
-python scripts/db_utils.py status
+python scripts/utils_db.py status
 ```
 
 **Salida Ejemplo:**
@@ -71,7 +71,7 @@ python scripts/db_utils.py status
 Muestra la configuración y estado de los pipelines (ID, Versión, Owner, Estado).
 
 ```bash
-python scripts/db_utils.py pipelines
+python scripts/utils_db.py pipelines
 ```
 
 ### `executions` - Ver Historial
@@ -79,7 +79,7 @@ python scripts/db_utils.py pipelines
 Muestra las últimas ejecuciones con sus métricas clave (duración, calidad, registros procesados).
 
 ```bash
-python scripts/db_utils.py executions -l 10
+python scripts/utils_db.py executions -l 10
 ```
 
 ### `validations` - Ver Resultados de Calidad
@@ -88,10 +88,10 @@ Muestra los resultados detallados de las reglas de validación (Great Expectatio
 
 ```bash
 # Ver solo validaciones fallidas
-python scripts/db_utils.py validations -s failed
+python scripts/utils_db.py validations -s failed
 
 # Ver últimas 50 validaciones
-python scripts/db_utils.py validations -l 50
+python scripts/utils_db.py validations -l 50
 ```
 
 ### `stats` - Métricas Globales
@@ -99,7 +99,7 @@ python scripts/db_utils.py validations -l 50
 Resumen estadístico del uso del framework (Tasa de éxito, duración promedio, actividad diaria).
 
 ```bash
-python scripts/db_utils.py stats
+python scripts/utils_db.py stats
 ```
 
 ---
@@ -111,7 +111,7 @@ python scripts/db_utils.py stats
 Elimina los datos generados en el esquema `sample_data` (ej: customers, transactions) para liberar espacio o reiniciar pruebas. **No afecta la auditoría del pipeline.**
 
 ```bash
-python scripts/db_utils.py clean-samples
+python scripts/utils_db.py clean-samples
 ```
 
 ### `clean-old` - Purgar Historial Antiguo
@@ -119,7 +119,7 @@ python scripts/db_utils.py clean-samples
 Elimina ejecuciones y logs de auditoría más antiguos que X días.
 
 ```bash
-python scripts/db_utils.py clean-old -d 60  # Borrar > 60 días
+python scripts/utils_db.py clean-old -d 60  # Borrar > 60 días
 ```
 
 ### `vacuum` - Optimizar Rendimiento
@@ -127,7 +127,7 @@ python scripts/db_utils.py clean-old -d 60  # Borrar > 60 días
 Ejecuta `VACUUM ANALYZE` en PostgreSQL para recuperar espacio físico y actualizar las estadísticas del optimizador de consultas. Recomendado después de borrar muchos datos.
 
 ```bash
-python scripts/db_utils.py vacuum
+python scripts/utils_db.py vacuum
 ```
 
 ---

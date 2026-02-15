@@ -151,12 +151,14 @@ datasets:
     columns:
       - transaction_id
       - customer_id
+      - timestamp
       - amount
-      - currency
-      - transaction_date
-      - status
-      - merchant_name
       - category
+      - status
+      - description
+      - merchant_name
+      - payment_method
+      - ip_address
       
     attacks:
       - name: "Negative Amounts"
@@ -175,5 +177,5 @@ datasets:
         
       - name: "Future Dates"
         type: "timing"
-        target_columns: [transaction_date]
+        target_columns: [timestamp]
         rate: 0.05

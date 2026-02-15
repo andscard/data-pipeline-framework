@@ -55,9 +55,20 @@ if (-Not (Test-Path ".venv")) {
 
 Write-Host "`n[2/6] Instalando dependencias Python..." -ForegroundColor Yellow
 
+# Actualizar pip primero para mejorar manejo de rutas
+.venv\Scripts\python.exe -m pip install --upgrade pip | Out-Null
+
 .venv\Scripts\pip.exe install -q -r requirements.txt
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [ERROR] Fallo instalacion" -ForegroundColor Red
+    Write-Host "  [ERROR] Fallo la instalacion de paquetes." -ForegroundColor Red
+    Write-Host "  "
+    Write-Host "  [!] POSIBLE SOLUCION: LIMITACION DE RUTAS LARGAS DE WINDOWS" -ForegroundColor Yellow
+    Write-Host "  Parece un error de 'Long Path' (ruta demasiado larga)."
+    Write-Host "  Ejecuta este comando en PowerShell como Administrador para solucionarlo:"
+    Write-Host "  "
+    Write-Host "      Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1"
+    Write-Host "  "
+    Write-Host "  Luego reinicia la terminal y vuelve a ejecutar setup.ps1"
     exit 1
 }
 Write-Host "  [OK] Dependencias instaladas" -ForegroundColor Green
@@ -182,10 +193,10 @@ Write-Host "  2. Ejecutar pipeline:  data-framework run pipeline -c examples/pip
 Write-Host "  3. Infectar datos:     data-framework infect -c examples/infection_config.yml" -ForegroundColor White
 Write-Host "`nO USA EL METODO TRADICIONAL:`n" -ForegroundColor Cyan
 Write-Host "  1. Activar entorno:    .venv\Scripts\Activate.ps1" -ForegroundColor White
-Write-Host "  2. Ver estado DB:      python scripts/db_utils.py status" -ForegroundColor White
+Write-Host "  2. Ver estado DB:      python scripts/utils_db.py status" -ForegroundColor White
 Write-Host "  3. Ejecutar pipeline:  data-framework run pipeline -c examples/pipeline.yml" -ForegroundColor White
 Write-Host "`nCOMANDOS UTILES:`n" -ForegroundColor Cyan
-Write-Host "  python scripts/db_utils.py status|stats|executions" -ForegroundColor White
+Write-Host "  python scripts/utils_db.py status|stats|executions" -ForegroundColor White
 Write-Host "  docker-compose down" -ForegroundColor Gray
 
 Write-Host "================================================`n" -ForegroundColor Green

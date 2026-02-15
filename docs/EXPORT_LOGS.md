@@ -9,6 +9,31 @@ Esta funcionalidad es esencial para:
 
 ---
 
+## Diferencias de Ejecución: CLI vs Airflow
+
+Es importante distinguir cómo se genera esta información dependiendo del entorno de ejecución:
+
+### 1. Ejecución Manual (CLI)
+Cuando ejecutas un pipeline manualmente con `run pipeline`, **los logs NO se exportan automáticamente a archivos CSV**.
+*   Los datos se guardan en la base de datos PostgreSQL (`pipeline.executions`, etc.).
+*   Debes ejecutar explícitamente el comando `export-logs` post-ejecución si requieres los archivos.
+
+```bash
+# Paso 1: Ejecutar pipeline (guarda en DB)
+data-framework run pipeline -c config.yml
+
+# Paso 2: Exportar logs a CSV (opcional)
+data-framework export-logs -n MyPipeline
+```
+
+### 2. Ejecución Orquestada (Airflow)
+En el entorno de Airflow, el DAG incluye una tarea dedicada `5_export_logs` al final.
+*   Esta tarea se ejecuta **automáticamente** en cada corrida.
+*   Tiene configurado `trigger_rule='all_done'`, por lo que genera los CSV incluso si el pipeline falla.
+*   Los archivos se guardan en la ruta configurada en el DAG (usualmente `data/output/logs`).
+
+---
+
 ## Uso del Comando
 
 ```bash

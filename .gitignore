@@ -30,15 +30,15 @@ build/
 .env.*.local
 
 # Logs
-logs/**/*.log
 *.log
+logs/**
+airflow/logs/**
 
 # Docker
 docker-compose.override.yml
 
 # Reports (solo para desarrollo, no subir a Git)
-reports/*.html
-reports/*.pdf
+reports/**
 
 # Data (no subir datasets reales)
 data/**

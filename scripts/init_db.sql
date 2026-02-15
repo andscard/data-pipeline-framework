@@ -1,85 +1,22 @@
 -- scripts/init_db.sql
--- ============================================
--- Script de inicialización de base de datos
--- ============================================
--- 
--- Este script es IDEMPOTENTE y puede ejecutarse múltiples veces sin errores.
--- Utiliza CREATE IF NOT EXISTS para evitar fallos en re-ejecuciones.
---
--- USO:
---
--- 1. Con Docker (recomendado para entorno local):
---    docker exec -i framework_postgres psql -U admin -d data_framework < scripts/init_db.sql
---    
---    ¿Qué hace Docker aquí?
---    - 'docker exec': Ejecuta un comando dentro de un contenedor corriendo
---    - '-i': Modo interactivo (permite pasar input al comando)
---    - 'framework_postgres': Nombre del contenedor de PostgreSQL
---    - 'psql': Cliente de PostgreSQL
---    - '-U admin': Usuario de PostgreSQL
---    - '-d data_framework': Base de datos destino
---    - '< scripts/init_db.sql': Redirige el contenido del script como input
---    
---    Ventajas de usar Docker:
---    ✓ Aislamiento: No interfiere con PostgreSQL local
---    ✓ Reproducible: Mismo entorno en todos los desarrolladores
---    ✓ Fácil limpieza: docker-compose down -v elimina todo
---    ✓ Múltiples versiones: Puedes tener diferentes versiones de PostgreSQL
---
--- 2. Sin Docker (PostgreSQL local):
---    psql -U admin -d data_framework -f scripts/init_db.sql
---    
---    Nota: Requiere que PostgreSQL esté instalado localmente
---
--- 3. Desde Python (usado en setup_environment.py):
---    Se ejecuta usando SQLAlchemy, statement por statement
---
--- ============================================
-
--- Configurar comportamiento en caso de errores
-\set ON_ERROR_STOP off
-
--- Mostrar mensajes informativos
-\echo '============================================'
-\echo 'Inicializando base de datos...'
-\echo '============================================'
 
 -- ============================================
--- Crear extensiones necesarias
+-- Extensions
 -- ============================================
 
-\echo ''
-\echo '[*] Creando extensiones...'
-
--- UUID para generar identificadores únicos
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-\echo '  ✓ uuid-ossp'
-
--- Funciones de texto completo (full-text search)
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-\echo '  ✓ pg_trgm'
-
--- Funciones criptográficas
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-\echo '  ✓ pgcrypto'
 
 -- ============================================
--- Crear esquemas
+-- Schemas
 -- ============================================
-
-\echo ''
-\echo '[*] Creando esquemas...'
 
 CREATE SCHEMA IF NOT EXISTS pipeline;
-\echo '  ✓ pipeline - Gestión de pipelines y auditoría'
 
 -- ============================================
--- Tabla: pipeline.pipelines
--- Configuraciones de pipelines
+-- Tables: Pipelines
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.pipelines...'
 
 CREATE TABLE IF NOT EXISTS pipeline.pipelines (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -98,7 +35,6 @@ CREATE TABLE IF NOT EXISTS pipeline.pipelines (
     CONSTRAINT pipelines_name_not_empty CHECK (length(trim(name)) > 0)
 );
 
--- Comentarios descriptivos
 COMMENT ON TABLE pipeline.pipelines IS 'Configuraciones de pipelines de datos';
 COMMENT ON COLUMN pipeline.pipelines.version IS 'Versión del pipeline (semantic versioning)';
 COMMENT ON COLUMN pipeline.pipelines.owner IS 'Usuario o equipo responsable del pipeline';
@@ -106,7 +42,6 @@ COMMENT ON COLUMN pipeline.pipelines.tags IS 'Etiquetas para clasificación (ej:
 COMMENT ON COLUMN pipeline.pipelines.run_count IS 'Contador de ejecuciones completadas';
 COMMENT ON COLUMN pipeline.pipelines.last_run_at IS 'Timestamp de la última ejecución exitosa';
 
--- Índices para búsqueda rápida
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_pipelines_name') THEN
@@ -134,15 +69,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Tabla: pipeline.executions
--- Registro de ejecuciones de pipelines
+-- Tables: Executions
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.executions...'
 
 CREATE TABLE IF NOT EXISTS pipeline.executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -183,7 +112,6 @@ CREATE TABLE IF NOT EXISTS pipeline.executions (
     )
 );
 
--- Comentarios descriptivos
 COMMENT ON TABLE pipeline.executions IS 'Historial de ejecuciones de pipelines';
 COMMENT ON COLUMN pipeline.executions.execution_type IS 'Tipo: manual, scheduled, triggered, api';
 COMMENT ON COLUMN pipeline.executions.triggered_by IS 'Usuario o sistema que inició la ejecución';
@@ -197,7 +125,6 @@ COMMENT ON COLUMN pipeline.executions.total_warnings IS 'Número total de warnin
 COMMENT ON COLUMN pipeline.executions.report_path IS 'Ruta del reporte técnico HTML generado';
 COMMENT ON COLUMN pipeline.executions.executive_report_path IS 'Ruta del reporte ejecutivo HTML generado';
 
--- Índices
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_executions_pipeline_id') THEN
@@ -241,15 +168,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Tabla: pipeline.stage_executions
--- Tracking granular de cada stage del pipeline
+-- Tables: Stage Executions
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.stage_executions...'
 
 CREATE TABLE IF NOT EXISTS pipeline.stage_executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -288,7 +209,6 @@ COMMENT ON COLUMN pipeline.stage_executions.memory_usage_mb IS 'Uso de memoria d
 COMMENT ON COLUMN pipeline.stage_executions.cpu_usage_percent IS 'Uso promedio de CPU durante el stage';
 COMMENT ON COLUMN pipeline.stage_executions.metrics IS 'Métricas adicionales específicas del stage (quality_score, validations_passed, etc)';
 
--- Índices
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_stage_executions_execution_id') THEN
@@ -312,15 +232,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Tabla: pipeline.validation_results
--- Resultados de validaciones de calidad
+-- Tables: Validation Results
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.validation_results...'
 
 CREATE TABLE IF NOT EXISTS pipeline.validation_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -343,7 +257,6 @@ CREATE TABLE IF NOT EXISTS pipeline.validation_results (
     )
 );
 
--- Comentarios descriptivos
 COMMENT ON TABLE pipeline.validation_results IS 'Resultados de validaciones de calidad y seguridad';
 COMMENT ON COLUMN pipeline.validation_results.dataset_name IS 'Nombre del dataset validado (ej: raw_customers)';
 COMMENT ON COLUMN pipeline.validation_results.suite_name IS 'Nombre del suite de validación (ej: Suite 01: Estructura)';
@@ -351,7 +264,6 @@ COMMENT ON COLUMN pipeline.validation_results.expectation_type IS 'Tipo de expec
 COMMENT ON COLUMN pipeline.validation_results.total_records IS 'Total de registros validados';
 COMMENT ON COLUMN pipeline.validation_results.severity IS 'Severidad: critical, error, warning, info';
 
--- Índices
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_results_execution_id') THEN
@@ -384,15 +296,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Tabla: pipeline.validation_summary
--- Resumen agregado de validaciones por suite
+-- Tables: Validation Summary
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.validation_summary...'
 
 CREATE TABLE IF NOT EXISTS pipeline.validation_summary (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -417,7 +323,6 @@ COMMENT ON TABLE pipeline.validation_summary IS 'Resumen agregado de validacione
 COMMENT ON COLUMN pipeline.validation_summary.quality_score IS 'Score de calidad calculado: (passed/total)*100';
 COMMENT ON COLUMN pipeline.validation_summary.execution_time_ms IS 'Tiempo de ejecución del suite en milisegundos';
 
--- Índices
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_validation_summary_execution_id') THEN
@@ -437,15 +342,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Tabla: pipeline.audit_logs
--- Logs de auditoría del sistema
+-- Tables: Audit Logs
 -- ============================================
-
-\echo ''
-\echo '[*] Creando tabla pipeline.audit_logs...'
 
 CREATE TABLE IF NOT EXISTS pipeline.audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -462,7 +361,6 @@ CREATE TABLE IF NOT EXISTS pipeline.audit_logs (
     )
 );
 
--- Índices para búsquedas eficientes
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_execution_id') THEN
@@ -485,16 +383,10 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Tabla y índices creados'
-
 -- ============================================
--- Funciones útiles
+-- Functions
 -- ============================================
 
-\echo ''
-\echo '[*] Creando funciones...'
-
--- Función para actualizar updated_at automáticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -503,9 +395,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-\echo '  ✓ update_updated_at_column()'
-
--- Aplicar trigger a tablas con updated_at
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_pipelines_updated_at') THEN
@@ -516,29 +405,9 @@ BEGIN
     END IF;
 END $$;
 
-\echo '  ✓ Triggers aplicados'
-
 -- ============================================
--- Permisos
+-- Permissions
 -- ============================================
 
 GRANT USAGE ON SCHEMA pipeline TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pipeline TO PUBLIC;
-
--- ============================================
--- Mensaje de confirmación
--- ============================================
-
-\echo ''
-\echo '============================================'
-\echo 'Base de datos inicializada correctamente'
-\echo '============================================'
-\echo ''
-\echo 'Schema creado: pipeline'
-\echo 'Tablas creadas: 5 tablas (pipelines, executions, validation_results, validation_summary, audit_logs)'
-\echo ''
-\echo '✓ El script es idempotente y puede ejecutarse múltiples veces'
-\echo ''
-\echo 'Siguiente paso:'
-\echo '  python scripts/generate_sample_data.py -c 10000 -t 50000'
-\echo ''

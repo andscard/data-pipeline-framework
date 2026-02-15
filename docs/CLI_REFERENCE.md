@@ -28,6 +28,8 @@ data-framework run pipeline -c <config_file>
 data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 ```
 
+> **Nota Importante:** La ejecución vía CLI guarda todos los logs en la base de datos PostgreSQL, pero **NO genera automáticamente** los archivos CSV de auditoría. Para extraer los reportes en archivo, ejecute posteriormente el comando `export-logs`.
+
 **Salida:**
 ```
 Starting pipeline: CustomerPipeline

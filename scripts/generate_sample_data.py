@@ -316,11 +316,6 @@ Ejemplos de uso:
             )
             print("     (pipeline.executions, validation_results, metrics, etc.)")
 
-        print("\n📚 Siguiente paso:")
-        print("  1. Ejecutar setup completo: python scripts/setup_environment.py")
-        print("  2. O ejecutar pipeline directamente con estos datos")
-        print()
-
         if not (success_files and success_db):
             sys.exit(1)
 
