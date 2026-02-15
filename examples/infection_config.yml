@@ -2,19 +2,13 @@
 # CONFIGURACIÓN DE INFECCIÓN DE DATOS - Data Pipeline Framework
 # ============================================================================
 #
-# Este módulo inyecta vulnerabilidades en datos limpios para probar el
-# sistema de validación de seguridad y calidad.
+# Este módulo inyecta vulnerabilidades en datos limpios para prueba de seguridad.
 #
 # FLUJO:
 #   1. Leer datos limpios (customers.csv, transactions.csv)
-#   2. Aplicar ataques configurados (SQL injection, XSS, outliers, etc.)
+#   2. Aplicar ataques configurados (Injection, XSS, outliers, etc.)
 #   3. Guardar datos infectados
-#   4. Pipeline ejecuta validación y detecta vulnerabilidades
 #
-# BASADO EN:
-#   - OWASP Top 10 (2021)
-#   - CWE Top 25 Most Dangerous Software Weaknesses
-#   - MITRE ATT&CK Data Sources
 # ============================================================================
 
 # Semilla para reproducibilidad
@@ -43,16 +37,14 @@ output_targets:
   # Guardar en PostgreSQL
   postgres:
     enabled: true
-    schema: "sample_data"  # Schema centralizado para todos los datos (limpios e infectados)
+    schema: "sample_data"
     connection:
       host: "${POSTGRES_HOST}"
       port: "${POSTGRES_PORT}"
       database: "${POSTGRES_DB}"
       user: "${POSTGRES_USER}"
       password: "${POSTGRES_PASSWORD}"
-    # Si la tabla existe, reemplazar
-    if_exists: "replace"  # replace | append | fail
-    # Crear schema automáticamente si no existe
+    if_exists: "replace"
     create_schema_if_not_exists: true
 
 # ============================================================================
@@ -66,439 +58,122 @@ datasets:
   customers:
     input: "data/samples/customers.csv"
     
-    # Output destinations
     output:
-      csv_file: "customers_infected.csv"  # Nombre del archivo (se guarda en output_targets.csv.path)
-      postgres_table: "customers_infected"  # Nombre de la tabla en PostgreSQL
+      csv_file: "customers_infected.csv"
+      postgres_table: "customers_infected"
     
-    # Columnas disponibles en el dataset
     columns:
-      - customer_id          # UUID
-      - name                 # Text (nombre completo)
-      - email                # Email
-      - phone                # Phone (+34XXXXXXXXX)
-      - address              # Text (dirección)
-      - registration_date    # Datetime
-      - last_login           # Datetime
-      - account_status       # Enum
-      - lifetime_value       # Numeric
-      - user_comment         # Text (campo libre)
-      - website              # URL
-      - ip_address           # IPv4
-      - credit_card_last4    # Text (4 dígitos)
-      - age                  # Integer
-      - postal_code          # Text (5 dígitos)
+      - customer_id
+      - name
+      - email
+      - phone
+      - address
+      - registration_date
+      - last_login
+      - account_status
+      - lifetime_value
+      - user_comment
+      - website
+      - ip_address
+      - credit_card_last4
+      - age
+      - postal_code
     
-    # Ataques a aplicar
     attacks:
       
-      # ---------------- INJECTION ATTACKS (OWASP A03:2021) ----------------
+      # ---------------- INJECTION ATTACKS ----------------
       
-      - name: "SQL Injection en campos de texto"
-        type: "sql_injection"
+      - name: "Generic Injection Mix"
+        type: "injection"
         target_columns: [name, user_comment, address]
-        rate: 0.15  # 15% de registros
-        payloads:
-          - "' OR '1'='1"
-          - "'; DROP TABLE users; --"
-          - "admin'--"
-          - "' OR 1=1--"
-          - "'; DELETE FROM customers WHERE '1'='1"
-          - "' UNION SELECT NULL, username, password FROM users--"
-          - "1' AND '1'='1"
-          - "' OR 'x'='x"
+        rate: 0.15
         
       - name: "XSS (Cross-Site Scripting)"
         type: "xss"
         target_columns: [name, user_comment, website]
         rate: 0.10
-        payloads:
-          - "<script>alert('XSS')</script>"
-          - "<img src=x onerror='alert(1)'>"
-          - "<svg/onload=alert('XSS')>"
-          - "javascript:alert('XSS')"
-          - "<iframe src='javascript:alert(1)'>"
-          - "<body onload=alert('XSS')>"
-          - "<script>document.cookie</script>"
-          - "';alert(String.fromCharCode(88,83,83))//'"
-      
-      - name: "NoSQL Injection"
-        type: "nosql_injection"
-        target_columns: [user_comment, name]
-        rate: 0.10
-        payloads:
-          - "{$ne: null}"
-          - "{$gt: ''}"
-          - "'; return true; var foo = '"
-          - "' || '1'=='1"
-      
-      - name: "Command Injection"
-        type: "command_injection"
-        target_columns: [user_comment, address]
-        rate: 0.10
-        payloads:
-          - "; ls -la"
-          - "| cat /etc/passwd"
-          - "&& whoami"
-          - "; rm -rf /"
-          - "$(cat /etc/shadow)"
-          - "`id`"
-      
-      - name: "LDAP Injection"
-        type: "ldap_injection"
-        target_columns: [name, user_comment]
-        rate: 0.10
-        payloads:
-          - "*)(uid=*))(|(uid=*"
-          - "admin*"
-          - "*)(objectClass=*"
       
       - name: "Path Traversal"
         type: "path_traversal"
         target_columns: [user_comment, website]
         rate: 0.10
-        payloads:
-          - "../../../etc/passwd"
-          - "..\\..\\..\\windows\\system32\\config\\sam"
-          - "....//....//....//etc/passwd"
-          - "%2e%2e%2f%2e%2e%2f%2e%2e%2f"
       
-      # ---------------- DATA LEAKAGE (OWASP A08:2021) ----------------
+      # ---------------- DATA LEAKAGE ----------------
       
-      - name: "Números de tarjeta completos (Violación PCI-DSS)"
-        type: "credit_card_exposure"
-        target_columns: [credit_card_last4]
-        rate: 0.10
-        payloads:
-          - "4532015112830366"  # Visa válida
-          - "5425233430109903"  # Mastercard válida
-          - "374245455400126"   # Amex válida
-          - "6011514433546201"  # Discover válida
-      
-      - name: "API Keys y Tokens"
-        type: "secret_exposure"
-        target_columns: [user_comment, address]
-        rate: 0.15
-        payloads:
-          - "AKIA3SGQVQG7FGA6KDH9"  # AWS Access Key
-          - "ghp_xjKmGH8vN2pQ5wR3tLmY7sX9bC4fD1eE2"  # GitHub Token
-          - "sk_live_51HqJKlF2eZvKYlo2C8yN9"  # Stripe Key
-          - "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0j"  # Google API Key
-          - "xoxb-1234567890-1234567890-XYZ123"  # Slack Token
-      
-      - name: "Private Keys"
-        type: "private_key_exposure"
-        target_columns: [user_comment]
-        rate: 0.10
-        payloads:
-          - "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."
-          - "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkq..."
-      
-      - name: "JWT Tokens"
-        type: "jwt_exposure"
-        target_columns: [user_comment]
-        rate: 0.10
-        payloads:
-          - "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-      
-      - name: "Passwords en texto plano"
-        type: "password_exposure"
+      - name: "Data Leakage Exposure"
+        type: "data_leakage"
         target_columns: [user_comment, address]
         rate: 0.10
-        payloads:
-          - "password: Admin123!"
-          - "pwd=SecretPass2024"
-          - "contraseña: Qwerty123"
       
-      # ---------------- SSRF (Server-Side Request Forgery) ----------------
+      # ---------------- NETWORK / SSRF ----------------
       
-      - name: "IPs privadas (SSRF)"
-        type: "ssrf_private_ip"
-        target_columns: [ip_address]
+      - name: "SSRF Attacks"
+        type: "ssrf"
+        target_columns: [website, user_comment]
         rate: 0.10
-        payloads:
-          - "127.0.0.1"
-          - "localhost"
-          - "10.0.0.1"
-          - "172.16.0.1"
-          - "192.168.1.1"
-          - "169.254.169.254"  # AWS metadata
-          - "0.0.0.0"
       
-      - name: "URLs maliciosas (SSRF)"
-        type: "ssrf_url"
-        target_columns: [website]
-        rate: 0.08
-        payloads:
-          - "http://localhost:8080/admin"
-          - "http://127.0.0.1/secrets"
-          - "http://169.254.169.254/latest/meta-data/"
-          - "file:///etc/passwd"
+      # ---------------- DATA QUALITY / LOGIC ----------------
       
-      # ---------------- QUALITY ISSUES ----------------
-      
-      - name: "Valores nulos estratégicos"
-        type: "missing_data"
-        target_columns: [phone, email, address]
-        rate: 0.15
-        strategy: "targeted"  # Afecta registros críticos
-      
-      - name: "Outliers en edad"
-        type: "outliers"
-        target_columns: [age]
-        rate: 0.10
-        payloads:
-          - -10
-          - 0
-          - 5
-          - 150
-          - 250
-          - 999
-      
-      - name: "Outliers en lifetime_value"
-        type: "outliers"
-        target_columns: [lifetime_value]
-        rate: 0.10
-        payloads:
-          - -10000
-          - 999999999
-          - 0.000001
-      
-      - name: "Emails de prueba"
-        type: "test_values"
-        target_columns: [email]
-        rate: 0.15
-        payloads:
-          - "test@test.com"
-          - "dummy@example.com"
-          - "noreply@test.org"
-          - "admin@localhost"
-      
-      - name: "Duplicación de registros"
-        type: "duplicates"
-        target_columns: []  # Fila completa
-        rate: 0.10
-        strategy: "exact"  # exact | partial
-      
-      - name: "Formatos inconsistentes de teléfono"
-        type: "format_inconsistency"
-        target_columns: [phone]
-        rate: 0.10
-        payloads:
-          - "123456789"  # Sin prefijo
-          - "+1234567890"  # País incorrecto
-          - "34 912 345 678"  # Espacios incorrectos
-          - "phone: +34123"  # Texto mezclado
-      
-      - name: "Corrupción de encoding"
-        type: "encoding_corruption"
-        target_columns: [name, address]
-        rate: 0.06
-        payloads:
-          - "JosÃ© GarcÃ­a"  # UTF-8 mal decodificado
-          - "Ma¶a RodrÃguez"
-      
-      - name: "Fechas futuras (anomalía temporal)"
-        type: "temporal_anomaly"
-        target_columns: [registration_date]
+      - name: "Negative Amounts"
+        type: "negative_value"
+        target_columns: [age, lifetime_value]
         rate: 0.05
-        strategy: "future_dates"  # Fechas del año 2030
-      
-      - name: "Inconsistencia last_login < registration_date"
-        type: "cross_field_violation"
+        
+      - name: "Format Corruption"
+        type: "format_corruption"
+        target_columns: [email, phone]
+        rate: 0.10
+        
+      - name: "Invalid Dates"
+        type: "inconsistency"
         target_columns: [registration_date, last_login]
-        rate: 0.07
-        strategy: "invert_dates"
-  
+        rate: 0.10
+        
+      - name: "Orphaned References"
+        type: "orphaned_reference"
+        target_columns: [customer_id]
+        rate: 0.02
+        
+      - name: "Cross Field Logical Errors"
+        type: "cross_field_violation"
+        rate: 0.05
+
   # --------------------------------------------------------------------------
   # TRANSACTIONS DATASET
   # --------------------------------------------------------------------------
   transactions:
     input: "data/samples/transactions.csv"
     
-    # Output destinations
     output:
-      csv_file: "transactions_infected.csv"  # Nombre del archivo
-      postgres_table: "transactions_infected"  # Nombre de la tabla en PostgreSQL
-    
+      csv_file: "transactions_infected.csv"
+      postgres_table: "transactions_infected"
+      
     columns:
       - transaction_id
       - customer_id
-      - timestamp
       - amount
-      - category
+      - currency
+      - transaction_date
       - status
-      - description
       - merchant_name
-      - payment_method
-      - ip_address
-    
+      - category
+      
     attacks:
-      
-      # ---------------- INJECTION ATTACKS ----------------
-      
-      - name: "SQL Injection en description"
-        type: "sql_injection"
-        target_columns: [description, merchant_name]
-        rate: 0.15
-        payloads:
-          - "Payment for '; DROP TABLE transactions; --"
-          - "Order #12345' OR 1=1; --"
-          - "' UNION SELECT * FROM credit_cards--"
-      
-      - name: "XSS en description"
-        type: "xss"
-        target_columns: [description, merchant_name]
-        rate: 0.10
-        payloads:
-          - "Purchase <script>alert('Hacked')</script>"
-          - "Item: <img src=x onerror=alert(1)>"
-      
-      - name: "Command Injection"
-        type: "command_injection"
-        target_columns: [description]
-        rate: 0.10
-        payloads:
-          - "Refund $(rm -rf /)"
-          - "Service fee |cat /etc/passwd"
-      
-      # ---------------- SSRF ----------------
-      
-      - name: "IPs privadas"
-        type: "ssrf_private_ip"
-        target_columns: [ip_address]
-        rate: 0.10
-        payloads:
-          - "127.0.0.1"
-          - "192.168.1.1"
-          - "169.254.169.254"
-      
-      # ---------------- QUALITY ISSUES ----------------
-      
-      - name: "Montos negativos"
-        type: "negative_amounts"
+      - name: "Negative Amounts"
+        type: "negative_value"
         target_columns: [amount]
         rate: 0.10
-        strategy: "random_negative"
-      
-      - name: "Montos extremos (outliers)"
+        
+      - name: "Outliers"
         type: "outliers"
         target_columns: [amount]
-        rate: 0.10
-        payloads:
-          - 0.001
-          - 999999999
-          - -50000
-      
-      - name: "UUIDs inválidos"
-        type: "invalid_uuid"
-        target_columns: [transaction_id, customer_id]
-        rate: 0.10
-        payloads:
-          - "not-a-uuid"
-          - "12345"
-          - "00000000-0000-0000-0000-000000000000"
-      
-      - name: "Customer IDs inexistentes (violación integridad referencial)"
-        type: "orphaned_references"
-        target_columns: [customer_id]
-        rate: 0.08
-        strategy: "generate_fake_uuids"
-      
-      - name: "Timestamps futuros"
-        type: "temporal_anomaly"
-        target_columns: [timestamp]
-        rate: 0.06
-        strategy: "future_dates"
-      
-      - name: "Categorías inválidas"
-        type: "invalid_enum"
-        target_columns: [category, status, payment_method]
-        rate: 0.07
-        payloads:
-          - "InvalidCategory"
-          - "Unknown"
-          - "'; DROP TABLE--"
-
-# ============================================================================
-# REPORTES Y LOGS
-# ============================================================================
-reporting:
-  # Generar reporte detallado de infección
-  generate_report: true
-  report_path: "data/output/infection_report.json"
-  
-  # Incluir en el reporte
-  include:
-    - infection_summary       # Resumen por tipo de ataque
-    - affected_rows           # IDs de filas afectadas
-    - payload_distribution    # Distribución de payloads usados
-    - column_impact           # Impacto por columna
-
-# ============================================================================
-# NOTAS SOBRE DESTINOS DE SALIDA
-# ============================================================================
-# Los datos infectados se pueden guardar en múltiples destinos:
-#
-# 1. ARCHIVOS CSV (output_targets.csv)
-#    - Ruta: data/output/customers_infected.csv
-#    - Ruta: data/output/transactions_infected.csv
-#    - Útil para inspección manual y testing local
-#
-# 2. POSTGRESQL (output_targets.postgres)
-#    - Schema: infected_data
-#    - Tablas: infected_data.customers_infected
-#              infected_data.transactions_infected
-#    - Útil para:
-#      * Comparación con datos limpios (schema: sample_data)
-#      * Consultas SQL para análisis de vulnerabilidades
-#      * Testing de pipelines que leen de PostgreSQL
-#      * Auditoría y trazabilidad
-#
-# EJEMPLO DE USO:
-#   1. Generar datos infectados:
-#      python scripts/infect_data.py
-#
-#   2. Los datos se guardan en:
-#      - CSV: data/output/customers_infected.csv
-#      - PostgreSQL: infected_data.customers_infected
-#
-#   3. El pipeline puede leer de cualquier fuente:
-#      ingestion:
-#        sources:
-#          - name: "customers_infected_csv"
-#            type: "csv"
-#            path: "data/output/customers_infected.csv"
-#      
-#          - name: "customers_infected_postgres"
-#            type: "postgres"
-#            query: "SELECT * FROM infected_data.customers_infected"
-#
-# COMPARACIÓN DE ESQUEMAS:
-#   - sample_data.customers      → Datos LIMPIOS (generados por generate_sample_data.py)
-#   - infected_data.customers_infected → Datos INFECTADOS (generados por infect_data.py)
-
-# ============================================================================
-# METADATA
-# ============================================================================
-metadata:
-  description: "Configuración completa de infección para testing de seguridad"
-  version: "3.1"
-  created_by: "Data Pipeline Framework"
-  last_updated: "2026-02-09"
-  
-  owasp_coverage:
-    - "A03:2021 - Injection"
-    - "A04:2021 - Insecure Design"
-    - "A05:2021 - Security Misconfiguration"
-    - "A07:2021 - Identification and Authentication Failures"
-    - "A08:2021 - Software and Data Integrity Failures"
-  
-  cwe_coverage:
-    - "CWE-89: SQL Injection"
-    - "CWE-79: Cross-site Scripting (XSS)"
-    - "CWE-78: OS Command Injection"
-    - "CWE-918: Server-Side Request Forgery (SSRF)"
-    - "CWE-200: Information Exposure"
-    - "CWE-22: Path Traversal"
-    - "CWE-798: Use of Hard-coded Credentials"
+        rate: 0.05
+        
+      - name: "Duplicated Transactions"
+        type: "duplicates"
+        rate: 0.05
+        
+      - name: "Future Dates"
+        type: "timing"
+        target_columns: [transaction_date]
+        rate: 0.05

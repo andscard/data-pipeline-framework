@@ -250,7 +250,7 @@ Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.y
 
 ## Arquitectura CLI
 
-**Punto de entrada:** `src/cli.py`
+**Punto de entrada:** `data-framework`
 
 Comandos disponibles:
 - `run pipeline` - Ejecutar pipeline orquestado desde YAML.

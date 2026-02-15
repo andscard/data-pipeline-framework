@@ -30,7 +30,7 @@ data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 **Salida:**
 ```
-Starting pipeline: CustomerDataPipeline
+Starting pipeline: CustomerPipeline
 ================================================================================
 Stage: INGESTION
   ✓ Loaded 10,000 records from CSV
@@ -45,8 +45,10 @@ Stage: TRANSFORMATION
   ✓ Created 2 derived columns
 
 Stage: OUTPUT
-  ✓ Exported to CSV: data/output/customers.csv
-  ✓ Exported to PostgreSQL: sample_data.customers
+  ✓ Exported to CSV: data/output/active_customers.csv
+  ✓ Exported to PostgreSQL: processed_data.active_customers
+  ✓ Exported to CSV: data/output/completed_transactions.csv
+  ✓ Exported to PostgreSQL: processed_data.customers_enriched
 
 ================================================================================
 Execution completed
@@ -87,12 +89,12 @@ data-framework export-logs -n <pipeline_name> [-o <output_dir>]
 
 **Ejemplo:**
 ```bash
-data-framework export-logs -n CustomerDataPipeline -o analysis/
+data-framework export-logs -n CustomerPipeline -o analysis/
 ```
 
 **Salida:**
 ```
-Exporting logs for pipeline: CustomerDataPipeline
+Exporting logs for pipeline: CustomerPipeline
 Output directory: analysis/
 
 Exporting data...
@@ -106,12 +108,12 @@ Exporting data...
 All files saved in: C:\...\analysis
 
 Files generated:
-  - CustomerDataPipeline_executions_20260210_153045.csv
-  - CustomerDataPipeline_stages_20260210_153045.csv
-  - CustomerDataPipeline_validation_quality_20260210_153045.csv
-  - CustomerDataPipeline_validation_failures_20260210_153045.csv
-  - CustomerDataPipeline_timeline_20260210_153045.csv
-  - CustomerDataPipeline_errors_20260210_153045.csv
+  - CustomerPipeline_executions_20260210_153045.csv
+  - CustomerPipeline_stages_20260210_153045.csv
+  - CustomerPipeline_validation_quality_20260210_153045.csv
+  - CustomerPipeline_validation_failures_20260210_153045.csv
+  - CustomerPipeline_timeline_20260210_153045.csv
+  - CustomerPipeline_errors_20260210_153045.csv
 
 Next steps:
   1. Open CSV files with Excel, Google Sheets, or pandas
@@ -189,28 +191,7 @@ Infection report: data/output/infection_report.json
 
 **Formato de Configuración:**
 
-```yaml
-infection:
-  input_file: "data/samples/customers.csv"
-  output_file: "data/output/customers_infected.csv"
-  
-  attacks:
-    - type: "sql_injection"
-      rate: 0.01           # 1% de registros
-      columns: ["name", "address"]
-      severity: "critical"
-    
-    - type: "xss"
-      rate: 0.01
-      columns: ["name", "email"]
-      severity: "critical"
-    
-    - type: "data_leakage"
-      rate: 0.01
-      columns: ["notes"]
-      patterns: ["ssn", "credit_card"]
-      severity: "critical"
-```
+Ver [Configuración de Infección](#configuración-de-infección) más abajo.
 
 **Tipos de Ataque Soportados:**
 - `sql_injection` - Patrones de SQL injection
@@ -247,7 +228,7 @@ start reports\execution_*.html
 
 **Relacionado:**
 - [examples/infection_config.yml](../examples/infection_config.yml) - Ejemplo de configuración
-- [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md#security-owasp) - Validaciones de seguridad
+- [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) - Validaciones de seguridad
 
 ---
 
@@ -281,7 +262,7 @@ validation:
 transformation:
   steps: [...]
 
-outputs: [...]
+output: [...]
 ```
 
 Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.yml) para ejemplo completo.
@@ -292,33 +273,49 @@ Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.y
 
 **Estructura:**
 ```yaml
-infection:
-  input_file: string
-  output_file: string
-  attacks: [...]
+global:
+  default_infection_rate: 0.2
+  mode: "mixed"
+
+output_targets:
+  csv:
+    enabled: true
+    path: "data/samples/"
+  postgres:
+    enabled: true
+    schema: "sample_data"
+
+datasets:
+  customers:
+    input: "data/samples/customers.csv"
+    output:
+      csv_file: "customers_infected.csv"
+    columns: [...]
+    attacks:
+      - type: "sql_injection"
+        rate: 0.15
+        target_columns: [name]
 ```
 
 Ver [examples/infection_config.yml](../examples/infection_config.yml) para ejemplo completo.
 
 ## Variables de Entorno
 
-Variables de entorno opcionales para configuración:
+Variables de entorno requeridas en `.env` para la conexión a la base de datos de auditoría:
 
 ```bash
 # Conexión PostgreSQL
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=data_framework
-export DB_USER=admin
-export DB_PASSWORD=admin123
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5433
+POSTGRES_DB=data_framework
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=admin123
 
-# Rutas de salida
-export REPORTS_DIR=reports
-export LOGS_DIR=logs
-export DATA_DIR=data
+# Logging
+LOG_LEVEL=INFO
 ```
 
-Los valores predeterminados están definidos en `src/config.py`.
+Las rutas de directorios (`data`, `logs`, `reports`) son relativas a la raíz del proyecto y definidas en `src/config.py`.
 
 ## Referencia de Códigos de Salida
 
@@ -358,83 +355,10 @@ docker ps | findstr postgres
 # Iniciar contenedor si no está corriendo
 docker-compose up -d postgres
 
-# Verificar conexión
+# Verificar variables en .env
+cat .env
+
+# Verificar conexión 
+# (Nombre del contenedor y usuario pueden variar según docker-compose.yml)
 docker exec framework_postgres psql -U admin -d data_framework -c "SELECT 1;"
-```
-
-### Configuración de Pipeline Inválida
-
-**Error:** `yaml.scanner.ScannerError: mapping values are not allowed here`
-
-**Solución:**
-- Validar sintaxis YAML con validador en línea
-- Verificar indentación (usar espacios, no tabs)
-- Asegurar citado apropiado de caracteres especiales
-
-### Exportación Sin Datos
-
-**Salida:** `✓ executions_summary: 0 rows`
-
-**Solución:**
-```bash
-# Ejecutar pipeline primero para generar datos
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-
-# Luego exportar
-data-framework export-logs -n CustomerDataPipeline
-```
-
-## Uso Avanzado
-
-### Procesamiento por Lotes
-
-```bash
-# Procesar múltiples pipelines
-for config in examples/*.yml; do
-    data-framework run pipeline -c "$config"
-done
-```
-
-### Reportes Automatizados
-
-```bash
-# Exportación diaria de todos los pipelines
-$pipelines = @("Pipeline1", "Pipeline2", "Pipeline3")
-$date = Get-Date -Format "yyyyMMdd"
-
-foreach ($pipeline in $pipelines) {
-    data-framework export-logs -n $pipeline -o "reports\daily\$date"
-}
-```
-
-### Encadenamiento de Pipelines
-
-```bash
-# Ejecutar múltiples stages
-data-framework run pipeline -c stage1.yml
-data-framework run pipeline -c stage2.yml
-data-framework run pipeline -c stage3.yml
-
-# Exportar resultados combinados
-data-framework export-logs -n CombinedPipeline
-```
-
-## Método Tradicional
-
-Si no se usa el comando global, activar entorno virtual:
-
-```powershell
-# Windows
-.venv\Scripts\Activate.ps1
-
-# Ejecutar comando
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-```
-
-```bash
-# Linux/Mac
-source .venv/bin/activate
-
-# Ejecutar comando
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 ```

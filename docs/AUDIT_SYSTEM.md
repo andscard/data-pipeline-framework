@@ -105,78 +105,65 @@ CREATE TABLE pipeline.executions (
 
 ### 3. validation_summary
 
-Métricas de validación agregadas por ejecución.
+Métricas de validación agregadas por suite y dataset.
 
 ```sql
 CREATE TABLE pipeline.validation_summary (
     id UUID PRIMARY KEY,
-    execution_id UUID UNIQUE REFERENCES executions(id),
+    execution_id UUID REFERENCES executions(id),
+    suite_name VARCHAR(255) NOT NULL,
+    dataset_name VARCHAR(255) NOT NULL,
     total_validations INTEGER NOT NULL,
     passed_validations INTEGER NOT NULL,
     failed_validations INTEGER NOT NULL,
-    warning_validations INTEGER DEFAULT 0,
-    critical_failures INTEGER DEFAULT 0,
-    total_records_checked INTEGER NOT NULL,
-    quality_score NUMERIC(5,2),
-    summary_metrics JSONB DEFAULT '{}'
+    quality_score NUMERIC(5,2) NOT NULL,
+    total_records INTEGER DEFAULT 0,
+    execution_time_ms INTEGER,
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT validation_summary_unique UNIQUE (execution_id, suite_name, dataset_name)
 );
 ```
 
 **Propósito:**
-Reduce el tamaño de la tabla validation_results en un 95% almacenando métricas agregadas en lugar de validaciones individuales aprobadas.
+Almacena métricas agregadas por suite de validación, reduciendo la necesidad de consultar resultados individuales.
 
 **Campos Clave:**
-- `total_validations`: Total de verificaciones ejecutadas
-- `passed_validations`: Verificaciones exitosas
-- `failed_validations`: Verificaciones fallidas
-- `critical_failures`: Fallos de alta severidad
-- `quality_score`: (passed / total) × 100
-
-**Beneficios:**
-- Query único para vista general de calidad de ejecución
-- Huella de almacenamiento mínima
-- Queries de agregación rápidas
+- `suite_name`: Nombre del grupo de validaciones (ej. "Schema Checks")
+- `dataset_name`: Dataset validado
+- `quality_score`: Porcentaje de éxito (0-100)
+- `execution_time_ms`: Tiempo de ejecución en milisegundos
 
 ### 4. validation_results
 
-Resultados detallados solo para validaciones fallidas.
+Resultados detallados de validaciones.
 
 ```sql
 CREATE TABLE pipeline.validation_results (
     id UUID PRIMARY KEY,
     execution_id UUID REFERENCES executions(id),
     rule_name VARCHAR(255) NOT NULL,
-    rule_type VARCHAR(100) CHECK (rule_type IN ('schema', 'quality', 'custom', 'great_expectations', 'pandera_schema')),
-    dataset_name VARCHAR(255) NOT NULL,
+    rule_type VARCHAR(100) NOT NULL,
+    dataset_name VARCHAR(255),
     suite_name VARCHAR(255),
     expectation_type VARCHAR(255),
     passed BOOLEAN NOT NULL,
     failed_count INTEGER DEFAULT 0,
     total_records INTEGER DEFAULT 0,
-    severity VARCHAR(50) CHECK (severity IN ('critical', 'error', 'warning', 'info')),
-    failure_details JSONB,
+    severity VARCHAR(50) DEFAULT 'error',
+    failure_details JSONB DEFAULT '[]',
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-**Optimización de Almacenamiento:**
-Solo almacena validaciones fallidas (passed = false). Validaciones aprobadas se agregan en validation_summary.
+**Optimización:**
+Se recomienda almacenar solo las validaciones fallidas para ahorrar espacio, aunque el esquema permite almacenar todas.
 
 **Campos Clave:**
-- `expectation_type`: Nombre de expectation de Great Expectations
-- `failed_count`: Número de registros que fallaron
-- `total_records`: Total de registros verificados
-- `failure_details`: JSONB con información de fallo específica
-- `severity`: Clasificación de severidad de fallo
-
-**Índices:**
-- `idx_execution_id`
-- `idx_passed` (para queries de solo fallidos)
-- `idx_dataset_name`
-- `idx_suite_name`
-- `idx_severity`
-- `idx_rule_type`
-- `idx_expectation_type`
+- `rule_name`: Nombre legible de la regla
+- `rule_type`: Origen de la regla (schema, quality, custom)
+- `failed_count`: Registros que no cumplieron la regla
+- `failure_details`: JSON con muestras de datos fallidos
+- `severity`: critical, error, warning, info
 
 ### 5. stage_executions
 
@@ -281,249 +268,58 @@ WHERE execution_id = 'a1b2c3d4-5678-90ab-cdef-1234567890ab'
 ORDER BY timestamp DESC;
 ```
 
-## Uso de API
+## Uso de API y Consultas
 
-### Registrar Ejecución de Pipeline
+Ejemplos de cómo interactuar con el sistema de auditoría.
 
-```python
-from src.modules.auditing.audit_manager import AuditManager
-from src.config import POSTGRES_CONFIG
+### Consultas Comunes
 
-audit = AuditManager(POSTGRES_CONFIG)
-audit.connect()
-
-# Registrar pipeline
-pipeline_id = audit.register_pipeline(
-    name="CustomerDataPipeline",
-    description="Procesamiento de datos de clientes",
-    config=yaml_config,
-    version="1.0.0",
-    owner="data_team"
-)
-
-# Iniciar ejecución
-execution_id = audit.start_execution(
-    pipeline_id=pipeline_id,
-    execution_type="manual",
-    triggered_by="john.doe",
-    environment="production"
-)
-
-# Rastrear stage
-audit.start_stage(execution_id, "INGESTION")
-# ... realizar ingesta ...
-audit.complete_stage(
-    execution_id=execution_id,
-    stage_name="INGESTION",
-    status="completed",
-    records_in=0,
-    records_out=10000,
-    error_count=0
-)
-
-# Registrar validaciones
-audit.record_validation_summary(
-    execution_id=execution_id,
-    total_validations=45,
-    passed_validations=41,
-    failed_validations=4,
-    total_records_checked=10000,
-    quality_score=91.11
-)
-
-# Completar ejecución
-audit.complete_execution(
-    execution_id=execution_id,
-    status="completed",
-    records_processed=9500,
-    records_failed=500,
-    quality_score=91.11,
-    health_status="warning",
-    total_errors=4,
-    total_warnings=2,
-    report_path="reports/execution_12345.html"
-)
-```
-
-### Seguimiento de Stages
-
-```python
-# Iniciar stage
-stage_id = audit.start_stage(
-    execution_id=execution_id,
-    stage_name="VALIDATION"
-)
-
-# Completar con métricas
-audit.complete_stage(
-    execution_id=execution_id,
-    stage_name="VALIDATION",
-    status="completed",
-    records_in=10000,
-    records_out=10000,
-    records_failed=0,
-    error_count=4,
-    warning_count=2,
-    metrics={
-        "quality_score": 91.11,
-        "validations_passed": 41,
-        "validations_failed": 4
-    }
-)
-```
-
-## Consultar Datos de Auditoría
-
-### Historial de Ejecuciones
-
+#### Historial Reciente
 ```sql
--- Ejecuciones recientes con métricas de calidad
 SELECT 
-    e.id,
-    p.name as pipeline_name,
-    e.start_time,
-    e.duration_seconds,
-    e.status,
-    e.health_status,
-    e.quality_score,
-    e.records_processed,
-    e.total_errors,
-    e.total_warnings
+    p.name, 
+    e.start_time, 
+    e.status, 
+    e.quality_score, 
+    e.duration_seconds
 FROM pipeline.executions e
 JOIN pipeline.pipelines p ON e.pipeline_id = p.id
 ORDER BY e.start_time DESC
 LIMIT 10;
 ```
 
-### Análisis de Rendimiento de Stages
-
+#### Rendimiento por Stage
 ```sql
--- Duraciones promedio de stages
 SELECT 
     stage_name,
     COUNT(*) as executions,
-    ROUND(AVG(duration_seconds)::numeric, 3) as avg_duration,
-    ROUND(MIN(duration_seconds)::numeric, 3) as min_duration,
-    ROUND(MAX(duration_seconds)::numeric, 3) as max_duration,
-    ROUND((AVG(records_out)::float / NULLIF(AVG(records_in), 0) * 100)::numeric, 2) as avg_success_rate
+    ROUND(AVG(duration_seconds)::numeric, 3) as avg_sec
 FROM pipeline.stage_executions
 WHERE status = 'completed'
 GROUP BY stage_name
-ORDER BY avg_duration DESC;
+ORDER BY avg_sec DESC;
 ```
 
-### Tendencias de Calidad
-
+#### Validaciones con más Fallos
 ```sql
--- Tendencia de quality score a lo largo del tiempo
 SELECT 
-    DATE_TRUNC('day', e.start_time) as day,
-    p.name as pipeline,
-    COUNT(*) as executions,
-    ROUND(AVG(e.quality_score)::numeric, 2) as avg_quality,
-    SUM(e.total_errors) as total_errors,
-    SUM(e.total_warnings) as total_warnings
-FROM pipeline.executions e
-JOIN pipeline.pipelines p ON e.pipeline_id = p.id
-WHERE e.start_time > CURRENT_DATE - INTERVAL '30 days'
-GROUP BY DATE_TRUNC('day', e.start_time), p.name
-ORDER BY day DESC, pipeline;
-```
-
-### Resumen de Validaciones Fallidas
-
-```sql
--- Fallos de validación más comunes
-SELECT 
-    expectation_type,
-    dataset_name,
-    COUNT(*) as failure_count,
-    ROUND(AVG(failed_count)::numeric, 2) as avg_failed_records,
-    MAX(severity) as max_severity
+    rule_name,
+    COUNT(*) as failures
 FROM pipeline.validation_results
 WHERE passed = false
-GROUP BY expectation_type, dataset_name
-ORDER BY failure_count DESC
-LIMIT 20;
+GROUP BY rule_name
+ORDER BY failures DESC
+LIMIT 5;
 ```
-
-## Lógica de Health Status
-
-Health status calculado basándose en quality score y contadores de errores:
-
-```python
-if status == "failed":
-    health_status = "failed"
-elif total_errors > 0 or quality_score < 80:
-    health_status = "critical"
-elif total_warnings > 0 or quality_score < 95:
-    health_status = "warning"
-else:
-    health_status = "healthy"
-```
-
-**Umbrales:**
-- **healthy**: quality_score ≥ 95%, errors = 0, warnings = 0
-- **warning**: 80% ≤ quality_score < 95% O warnings > 0
-- **critical**: quality_score < 80% O errors > 0
-- **failed**: Ejecución de pipeline falló
 
 ## Mantenimiento
 
-### Monitoreo de Tamaño de Base de Datos
+### Limpieza de Datos
+El script `scripts/db_utils.py` incluye utilidades de mantenimiento, o vía SQL:
 
 ```sql
--- Tamaños de tablas
-SELECT 
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
-FROM pg_tables
-WHERE schemaname = 'pipeline'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-```
-
-### Limpieza de Datos Antiguos
-
-```sql
--- Eliminar ejecuciones de más de 90 días
+-- Eliminar ejecuciones antiguas (ej: > 90 días)
 DELETE FROM pipeline.executions
 WHERE start_time < CURRENT_DATE - INTERVAL '90 days';
-
--- Cascade elimina validation_results, stage_executions, audit_logs
+-- El borrado en cascada limpia tablas relacionadas
 ```
-
-### Vacuum y Analyze
-
-```bash
-# Mantenimiento regular
-docker exec framework_postgres psql -U admin -d data_framework -c "VACUUM ANALYZE pipeline.executions;"
-docker exec framework_postgres psql -U admin -d data_framework -c "VACUUM ANALYZE pipeline.validation_results;"
-```
-
-## Exportar Métricas
-
-Usar el comando CLI `export-logs` para extraer datos de auditoría a CSV:
-
-```bash
-data-framework export-logs -n CustomerDataPipeline -o logs/
-```
-
-Genera 6 archivos CSV:
-- `executions_summary.csv` - Historial de ejecuciones
-- `stages_performance.csv` - Métricas de stages
-- `validation_quality.csv` - Quality scores por suite
-- `validation_failures.csv` - Detalles de validaciones fallidas
-- `timeline.csv` - Timeline de ejecuciones
-- `errors_analysis.csv` - Patrones de errores
-
-Ver [EXPORT_LOGS.md](EXPORT_LOGS.md) para detalles.
-
-## Mejores Prácticas
-
-1. **Mantenimiento de Índices**: Ejecutar VACUUM ANALYZE semanalmente en tablas de alta escritura
-2. **Retención de Datos**: Archivar ejecuciones de más de 90 días a almacenamiento separado
-3. **Monitoreo**: Configurar alertas en health_status = 'critical' o 'failed'
-4. **Rendimiento**: Usar stage_executions para identificar cuellos de botella
-5. **Tendencias de Calidad**: Rastrear quality_score a lo largo del tiempo para detectar degradación
-6. **Particionamiento**: Considerar particionar tabla executions por mes para despliegues grandes

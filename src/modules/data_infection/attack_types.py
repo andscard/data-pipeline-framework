@@ -319,11 +319,6 @@ class TimingAttack(BaseAttack):
         return df
 
 
-class SQLInjectionAttack(InjectionAttack):
-    """SQL Injection específico"""
-    pass
-
-
 class XSSAttack(BaseAttack):
     """Cross-Site Scripting Attack"""
     
@@ -351,21 +346,6 @@ class XSSAttack(BaseAttack):
         return df
 
 
-class CommandInjectionAttack(InjectionAttack):
-    """Command Injection Attack"""
-    pass
-
-
-class NoSQLInjectionAttack(InjectionAttack):
-    """NoSQL Injection Attack"""
-    pass
-
-
-class LDAPInjectionAttack(InjectionAttack):
-    """LDAP Injection Attack"""
-    pass
-
-
 class PathTraversalAttack(BaseAttack):
     """Path Traversal Attack"""
     
@@ -389,31 +369,6 @@ class PathTraversalAttack(BaseAttack):
         
         logger.info(f"PathTraversal: Affected {num_rows} rows in columns {columns}")
         return df
-
-
-class CreditCardExposureAttack(DataLeakageAttack):
-    """Credit Card Data Exposure"""
-    pass
-
-
-class SecretExposureAttack(DataLeakageAttack):
-    """API Keys and Secrets Exposure"""
-    pass
-
-
-class PrivateKeyExposureAttack(DataLeakageAttack):
-    """Private Keys Exposure"""
-    pass
-
-
-class JWTExposureAttack(DataLeakageAttack):
-    """JWT Token Exposure"""
-    pass
-
-
-class PasswordExposureAttack(DataLeakageAttack):
-    """Password Exposure"""
-    pass
 
 
 class SSRFAttack(BaseAttack):
@@ -466,11 +421,6 @@ class NegativeValueAttack(BaseAttack):
         return df
 
 
-class InvalidUUIDAttack(InconsistencyAttack):
-    """Invalid UUID formats"""
-    pass
-
-
 class OrphanedReferenceAttack(BaseAttack):
     """Referencias huérfanas (foreign keys inválidos)"""
     
@@ -493,16 +443,6 @@ class OrphanedReferenceAttack(BaseAttack):
         
         logger.info(f"OrphanedReference: Affected {num_rows} rows in columns {columns}")
         return df
-
-
-class InvalidEnumAttack(InconsistencyAttack):
-    """Invalid enum values"""
-    pass
-
-
-class TestValuesAttack(SchemaManipulationAttack):
-    """Test/Debug values in production"""
-    pass
 
 
 class CrossFieldViolationAttack(BaseAttack):
@@ -539,39 +479,11 @@ ATTACK_REGISTRY = {
     'format_corruption': FormatCorruptionAttack,
     'timing': TimingAttack,
     
-    # Injection variants
-    'sql_injection': SQLInjectionAttack,
+    # Specific implementations
     'xss': XSSAttack,
-    'nosql_injection': NoSQLInjectionAttack,
-    'command_injection': CommandInjectionAttack,
-    'ldap_injection': LDAPInjectionAttack,
     'path_traversal': PathTraversalAttack,
-    
-    # Data leakage variants
-    'credit_card_exposure': CreditCardExposureAttack,
-    'secret_exposure': SecretExposureAttack,
-    'private_key_exposure': PrivateKeyExposureAttack,
-    'jwt_exposure': JWTExposureAttack,
-    'password_exposure': PasswordExposureAttack,
-    
-    # SSRF attacks
-    'ssrf_private_ip': SSRFAttack,
-    'ssrf_url': SSRFAttack,
-    
-    # Value attacks
-    'negative_amounts': NegativeValueAttack,
-    'test_values': TestValuesAttack,
-    
-    # Reference attacks
-    'invalid_uuid': InvalidUUIDAttack,
-    'orphaned_references': OrphanedReferenceAttack,
-    'invalid_enum': InvalidEnumAttack,
-    
-    # Cross-field attacks
-    'cross_field_violation': CrossFieldViolationAttack,
-    'temporal_anomaly': TimingAttack,
-    
-    # Format attacks (aliases)
-    'format_inconsistency': InconsistencyAttack,
-    'encoding_corruption': FormatCorruptionAttack,
+    'ssrf': SSRFAttack,
+    'negative_value': NegativeValueAttack,
+    'orphaned_reference': OrphanedReferenceAttack,
+    'cross_field_violation': CrossFieldViolationAttack
 }
