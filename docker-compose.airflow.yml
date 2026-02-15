@@ -44,32 +44,32 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./:/opt/airflow/framework  # Framework completo disponible
-      - ./data:/opt/airflow/framework/data  # Datos
-      - ./examples:/opt/airflow/framework/examples  # Configs de pipelines
-      - ./reports:/opt/airflow/framework/reports  # Reportes generados
+      - ./:/opt/airflow/framework
+      - ./data:/opt/airflow/framework/data
+      - ./examples:/opt/airflow/framework/examples
+      - ./reports:/opt/airflow/framework/reports
     user: "${AIRFLOW_UID}:0"
     entrypoint: /bin/bash
     command:
       - -c
       - |
         # Instalar dependencias del framework desde requirements.txt
-        echo "📦 Instalando dependencias del framework..."
+        echo "Instalando dependencias del framework..."
         pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt
         
         # Instalar comando global data-framework (directorio del usuario)
-        echo "🔧 Instalando comando data-framework..."
+        echo "Instalando comando data-framework..."
         mkdir -p /home/airflow/.local/bin
         cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework
         chmod +x /home/airflow/.local/bin/data-framework
         export PATH="/home/airflow/.local/bin:$PATH"
         
         # Inicializar BD de Airflow
-        echo "🗄️ Inicializando base de datos de Airflow..."
+        echo "Inicializando base de datos de Airflow..."
         airflow db migrate
         
         # Crear usuario admin
-        echo "👤 Creando usuario admin..."
+        echo "Creando usuario admin..."
         airflow users create \
           --username admin \
           --firstname Admin \
@@ -78,7 +78,7 @@ services:
           --email admin@example.com \
           --password admin 2>/dev/null || echo "Usuario admin ya existe"
         
-        echo "✅ Airflow inicializado correctamente"
+        echo "Airflow inicializado correctamente"
     restart: "no"
 
   # Scheduler de Airflow
@@ -101,14 +101,14 @@ services:
       - ./reports:/opt/airflow/framework/reports
     user: "${AIRFLOW_UID}:0"
     command: bash -c "
-      echo '📦 Instalando dependencias del framework...' &&
+      echo 'Instalando dependencias del framework...' &&
       pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt &&
-      echo '🔧 Instalando comando data-framework...' &&
+      echo 'Instalando comando data-framework...' &&
       mkdir -p /home/airflow/.local/bin &&
       cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework &&
       chmod +x /home/airflow/.local/bin/data-framework &&
       export PATH='/home/airflow/.local/bin:$PATH' &&
-      echo '�🚀 Iniciando Airflow Scheduler...' &&
+      echo 'Iniciando Airflow Scheduler...' &&
       airflow scheduler
       "
     healthcheck:
@@ -141,14 +141,14 @@ services:
     ports:
       - "8080:8080"
     command: bash -c "
-      echo '📦 Instalando dependencias del framework...' &&
+      echo 'Instalando dependencias del framework...' &&
       pip install --no-cache-dir -q -r /opt/airflow/framework/requirements.txt &&
-      echo '🔧 Instalando comando data-framework...' &&
+      echo 'Instalando comando data-framework...' &&
       mkdir -p /home/airflow/.local/bin &&
       cp /opt/airflow/framework/docker/data-framework /home/airflow/.local/bin/data-framework &&
       chmod +x /home/airflow/.local/bin/data-framework &&
       export PATH='/home/airflow/.local/bin:$PATH' &&
-      echo '🌐 Iniciando Airflow Webserver...' &&
+      echo 'Iniciando Airflow Webserver...' &&
       airflow webserver
       "
     healthcheck:
@@ -158,5 +158,3 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
-
-# No necesitamos volúmenes adicionales - usamos los del docker-compose.yml base

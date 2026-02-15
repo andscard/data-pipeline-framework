@@ -1,13 +1,5 @@
 """
 Pipeline Executor - Orquestador principal del framework.
-
-NUEVA ARQUITECTURA (3 ETAPAS):
-1. Ingestion: Carga de datos desde fuentes
-2. Validation: Validación de esquema, calidad y detección de ataques/anomalías
-3. Transformation: Transformaciones sin agregaciones
-
-NOTA: La infección de datos ahora ocurre ANTES del pipeline usando el módulo
-      data_infection. Security testing se realiza durante la validación.
 """
 
 import pandas as pd

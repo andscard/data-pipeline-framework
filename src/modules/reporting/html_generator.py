@@ -43,7 +43,7 @@ class HTMLReportGenerator:
             safe_pipeline_name = re.sub(r'[^a-zA-Z0-9_-]', '_', pipeline_name)
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            stage_suffix = "validation" if report_type == "technical" else "execution"
+            stage_suffix = "validation" if report_type == "technical" else "executive"
             
             # Formato solicitado: <NombrePipeline>_<fecha en formato YYYYmmDD_HHMMSS>_<stage>.html
             filename = f"{safe_pipeline_name}_{timestamp}_{stage_suffix}.html"
@@ -64,7 +64,7 @@ class HTMLReportGenerator:
         pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
         start_time = monitoring.get('start_time', 'N/A')
         
-        report_title = "Data Quality Validation Report" if report_type == "technical" else "Data Pipeline Execution Report"
+        report_title = "Reporte de Validación de Calidad de Datos" if report_type == "technical" else "Reporte Ejecutivo del Pipeline de Datos"
         
         health_status = monitoring.get('health_status', 'unknown')
         duration = monitoring.get('total_duration', 0)
@@ -99,7 +99,7 @@ class HTMLReportGenerator:
             stages_section = f"""
         <!-- Pipeline Stages -->
         <section class="stages-section">
-            <h2>Pipeline Stages</h2>
+            <h2>Etapas del Pipeline</h2>
             {stages_html}
         </section>
         """
@@ -122,31 +122,30 @@ class HTMLReportGenerator:
                 <h1>{report_title}</h1>
                 <div class="header-meta">
                     <span><strong>Pipeline:</strong> {pipeline_name}</span>
-                    <span><strong>Execution ID:</strong> {execution_id}</span>
-                    <span><strong>Date:</strong> {start_time}</span>
+                    <span><strong>ID Ejecución:</strong> {execution_id}</span>
+                    <span><strong>Fecha:</strong> {start_time}</span>
                 </div>
             </div>
         </header>
         
         <!-- Executive Summary -->
         <section class="summary">
-            <h2>Executive Summary</h2>
             <div class="summary-grid">
                 <div class="summary-card">
-                    <div class="card-label">Status</div>
+                    <div class="card-label">Estado</div>
                     <div class="card-value">{status_badge}</div>
                 </div>
                 <div class="summary-card">
-                    <div class="card-label">Duration</div>
+                    <div class="card-label">Duración</div>
                     <div class="card-value">{duration:.2f}s</div>
                 </div>
                 <div class="summary-card">
-                    <div class="card-label">Records Ingested</div>
+                    <div class="card-label">Registros Procesados</div>
                     <div class="card-value">{records:,}</div>
-                    <div style="font-size: 0.75em; color: #6c757d; margin-top: 5px;">Total unique records loaded</div>
+                    <div style="font-size: 0.75em; color: #6c757d; margin-top: 5px;">Total registros únicos</div>
                 </div>
                 <div class="summary-card">
-                    <div class="card-label">Quality Score</div>
+                    <div class="card-label">Puntaje de Calidad</div>
                     <div class="card-value {self._get_quality_class(quality_score)}">{quality_score:.1f}%</div>
                 </div>
             </div>
@@ -157,15 +156,15 @@ class HTMLReportGenerator:
         
         <!-- Validation Results -->
         <section class="validation-section">
-            <h2>Validation Results</h2>
+            <h2>Resultados de Validación</h2>
             <div class="validation-overview">
                 <div class="validation-stat success">
                     <span class="stat-number">{validations_passed}</span>
-                    <span class="stat-label">Passed</span>
+                    <span class="stat-label">Pasados</span>
                 </div>
                 <div class="validation-stat failed">
                     <span class="stat-number">{validations_failed}</span>
-                    <span class="stat-label">Failed</span>
+                    <span class="stat-label">Fallidos</span>
                 </div>
                 <div class="validation-stat total">
                     <span class="stat-number">{validations_passed + validations_failed}</span>
@@ -175,10 +174,9 @@ class HTMLReportGenerator:
             
             {dataset_scorecard_html}
 
-            <h3 style="margin-top: 30px; margin-bottom: 20px;">Suite Detailed Breakdown</h3>
+            <h3 style="margin-top: 30px; margin-bottom: 20px;">Desglose Detallado por Suite</h3>
             {suites_html}
-            
-            <h3 style="margin-top: 40px; margin-bottom: 20px;">Failure Details</h3>
+
             {detailed_failures_html}
         </section>
         
@@ -647,17 +645,17 @@ class HTMLReportGenerator:
             
         return f"""
         <div style="margin-bottom: 30px;">
-            <h3>Dataset Quality Scorecards</h3>
+            <h3>Tarjetas de Puntuación de Calidad del Dataset</h3>
             <table class="suites-table">
                 <thead>
                     <tr>
                         <th>Dataset</th>
-                        <th style="text-align:center;">Passed</th>
-                        <th style="text-align:center;">Failed</th>
-                        <th style="text-align:center;">Total Checks</th>
-                        <th style="text-align:center;">Actual Score</th>
-                        <th style="text-align:center;">Target Score</th>
-                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Pasados</th>
+                        <th style="text-align:center;">Fallidos</th>
+                        <th style="text-align:center;">Total Verificaciones</th>
+                        <th style="text-align:center;">Puntaje Actual</th>
+                        <th style="text-align:center;">Puntaje Objetivo</th>
+                        <th style="text-align:center;">Estado</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -696,12 +694,12 @@ class HTMLReportGenerator:
         <table class="suites-table">
             <thead>
                 <tr>
-                    <th>Suite Name</th>
-                    <th>Type</th>
-                    <th style="text-align: center;">Passed</th>
-                    <th style="text-align: center;">Failed</th>
+                    <th>Nombre de Suite</th>
+                    <th>Tipo</th>
+                    <th style="text-align: center;">Pasadas</th>
+                    <th style="text-align: center;">Fallidas</th>
                     <th style="text-align: center;">Total</th>
-                    <th style="text-align: center;">Success Rate</th>
+                    <th style="text-align: center;">Tasa de Éxito</th>
                 </tr>
             </thead>
             <tbody>
@@ -927,7 +925,7 @@ class HTMLReportGenerator:
         return f"""
         <div style="margin-top: 40px;">
             <h3 style="color: #343a40; font-size: 1.2em; margin-bottom: 15px;">
-                📋 Detalle de Validaciones Fallidas
+                Detalle de Validaciones Fallidas
             </h3>
             <table style="width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
                 { ''.join(table_rows) }
@@ -958,7 +956,7 @@ class HTMLReportGenerator:
         cards = self._render_data_flow_cards(stages)
         return f"""
             <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
+                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Flujo de Datos del Pipeline</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
                     {cards}
                 </div>
@@ -970,6 +968,13 @@ class HTMLReportGenerator:
         cards = []
         
         stage_order = ["INGESTION", "VALIDATION", "TRANSFORMATION", "OUTPUT"]
+        stage_display = {
+            "INGESTION": "INGESTA",
+            "VALIDATION": "VALIDACIÓN",
+            "TRANSFORMATION": "TRANSFORMACIÓN",
+            "OUTPUT": "SALIDA"
+        }
+        
         stage_icons = {
             "INGESTION": "📥",
             "VALIDATION": "✓",
@@ -982,13 +987,14 @@ class HTMLReportGenerator:
                 data = stages[stage_name]
                 records = data.get('records_output', 0)
                 icon = stage_icons.get(stage_name, "•")
+                display_name = stage_display.get(stage_name, stage_name)
                 
                 cards.append(f"""
                 <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
                     <div style="font-size: 1.5em; margin-bottom: 5px;">{icon}</div>
-                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">{stage_name}</div>
+                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">{display_name}</div>
                     <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">{records:,}</div>
-                    <div style="font-size: 0.7em; color: #6c757d;">records</div>
+                    <div style="font-size: 0.7em; color: #6c757d;">registros</div>
                 </div>
                 """)
         
@@ -999,8 +1005,16 @@ class HTMLReportGenerator:
         if not stages:
             return ""
         
+        stage_display = {
+            "INGESTION": "INGESTA",
+            "VALIDATION": "VALIDACIÓN",
+            "TRANSFORMATION": "TRANSFORMACIÓN",
+            "OUTPUT": "SALIDA"
+        }
+        
         rows = []
         for stage_name, data in stages.items():
+            display_name = stage_display.get(stage_name, stage_name)
             duration = data.get('duration_seconds', 0)
             records_in = data.get('records_input', 0)
             records_out = data.get('records_output', 0)
@@ -1011,19 +1025,19 @@ class HTMLReportGenerator:
             
             # Explicación contextual por etapa
             if stage_name == "INGESTION":
-                context = "Loaded from sources"
+                context = "Carga de fuentes"
             elif stage_name == "VALIDATION":
-                context = f"{data.get('validations_passed', 0)}/{data.get('validations_passed', 0) + data.get('validations_failed', 0)} validations passed"
+                context = f"{data.get('validations_passed', 0)} de {data.get('validations_passed', 0) + data.get('validations_failed', 0)} validaciones pasadas"
             elif stage_name == "TRANSFORMATION":
-                context = "Filtered & transformed"
+                context = "Filtrado y transformado"
             elif stage_name == "OUTPUT":
-                context = "Written to targets"
+                context = "Escritura en destinos"
             else:
                 context = ""
             
             rows.append(f"""
             <tr>
-                <td><span class="stage-name">{stage_name}</span></td>
+                <td><span class="stage-name">{display_name}</span></td>
                 <td style="text-align: right;">{duration:.2f}s</td>
                 <td style="text-align: right;">{records_in:,}</td>
                 <td style="text-align: right;">{records_out:,}</td>
@@ -1037,13 +1051,13 @@ class HTMLReportGenerator:
         <table class="stages-table">
             <thead>
                 <tr>
-                    <th>Stage</th>
-                    <th style="text-align: right;">Duration</th>
-                    <th style="text-align: right;">Records In</th>
-                    <th style="text-align: right;">Records Out</th>
-                    <th>Context</th>
-                    <th style="text-align: right;">Errors</th>
-                    <th style="text-align: center;">Status</th>
+                    <th>Etapa</th>
+                    <th style="text-align: right;">Duración</th>
+                    <th style="text-align: right;">Entrada (Regs)</th>
+                    <th style="text-align: right;">Salida (Regs)</th>
+                    <th>Contexto</th>
+                    <th style="text-align: right;">Errores</th>
+                    <th style="text-align: center;">Estado</th>
                 </tr>
             </thead>
             <tbody>
@@ -1052,101 +1066,4 @@ class HTMLReportGenerator:
         </table>
         """
     
-    def _render_data_flow_section(self, stages: dict) -> str:
-        """Renderizar sección completa de Data Flow"""
-        cards = self._render_data_flow_cards(stages)
-        return f"""
-            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Pipeline Data Flow</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                    {cards}
-                </div>
-            </div>
-        """
-    
-    def _render_data_flow_cards(self, stages: dict) -> str:
-        """Renderizar tarjetas de flujo de datos"""
-        cards = []
-        
-        stage_order = ["INGESTION", "VALIDATION", "TRANSFORMATION", "OUTPUT"]
-        stage_icons = {
-            "INGESTION": "📥",
-            "VALIDATION": "✓",
-            "TRANSFORMATION": "⚙️",
-            "OUTPUT": "📤"
-        }
-        
-        for stage_name in stage_order:
-            if stage_name in stages:
-                data = stages[stage_name]
-                records = data.get('records_output', 0)
-                icon = stage_icons.get(stage_name, "•")
-                
-                cards.append(f"""
-                <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 1.5em; margin-bottom: 5px;">{icon}</div>
-                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">{stage_name}</div>
-                    <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">{records:,}</div>
-                    <div style="font-size: 0.7em; color: #6c757d;">records</div>
-                </div>
-                """)
-        
-        return ''.join(cards)
-    
-    def _render_stages(self, stages: dict) -> str:
-        """Renderizar tabla de stages"""
-        if not stages:
-            return ""
-        
-        rows = []
-        for stage_name, data in stages.items():
-            duration = data.get('duration_seconds', 0)
-            records_in = data.get('records_input', 0)
-            records_out = data.get('records_output', 0)
-            errors = len(data.get('errors', []))
-            
-            status = '✓' if errors == 0 else '✗'
-            status_color = '#28a745' if errors == 0 else '#dc3545'
-            
-            # Explicación contextual por etapa
-            if stage_name == "INGESTION":
-                context = "Loaded from sources"
-            elif stage_name == "VALIDATION":
-                context = f"{data.get('validations_passed', 0)}/{data.get('validations_passed', 0) + data.get('validations_failed', 0)} validations passed"
-            elif stage_name == "TRANSFORMATION":
-                context = "Filtered & transformed"
-            elif stage_name == "OUTPUT":
-                context = "Written to targets"
-            else:
-                context = ""
-            
-            rows.append(f"""
-            <tr>
-                <td><span class="stage-name">{stage_name}</span></td>
-                <td style="text-align: right;">{duration:.2f}s</td>
-                <td style="text-align: right;">{records_in:,}</td>
-                <td style="text-align: right;">{records_out:,}</td>
-                <td style="font-size: 0.85em; color: #6c757d;">{context}</td>
-                <td style="text-align: right; color: {status_color};">{errors}</td>
-                <td style="text-align: center; font-size: 1.2em; color: {status_color};">{status}</td>
-            </tr>
-            """)
-        
-        return f"""
-        <table class="stages-table">
-            <thead>
-                <tr>
-                    <th>Stage</th>
-                    <th style="text-align: right;">Duration</th>
-                    <th style="text-align: right;">Records In</th>
-                    <th style="text-align: right;">Records Out</th>
-                    <th>Context</th>
-                    <th style="text-align: right;">Errors</th>
-                    <th style="text-align: center;">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
-        </table>
-        """
+

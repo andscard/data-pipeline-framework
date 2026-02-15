@@ -14,6 +14,10 @@ Framework modular de data pipeline para ingestar, validar, transformar y exporta
                             ┌─────────▼─────────┐
                             │  Audit System     │
                             │  (PostgreSQL)     │
+                            └─────────┬─────────┘
+                                      │
+                            ┌─────────▼─────────┐
+                            │   Log Exporter    │ ──▶ CSV Reports
                             └───────────────────┘
 ```
 
@@ -78,23 +82,15 @@ Motor de transformación de datos que soporta:
 
 **Archivo:** `audit_manager.py`
 
-Sistema de auditoría basado en PostgreSQL con 6 tablas:
-1. `pipelines` - Registro de pipelines
-2. `executions` - Historial de ejecuciones
-3. `validation_summary` - Métricas de validación agregadas
-4. `validation_results` - Resultados de validación detallados
-5. `stage_executions` - Seguimiento granular de stages
-6. `audit_logs` - Logs de eventos detallados
+Sistema de auditoría basado en PostgreSQL con 6 tablas.
 
-Características:
-- Recolección de métricas en tiempo real
-- Seguimiento de health status (healthy/warning/critical/failed)
-- Reportes ejecutivos y técnicos
-- Seguimiento de rendimiento a nivel de stage
+### 6. Audit Log Exporter
+**Path:** `src/modules/auditing/log_exporter.py`
 
-Ver [AUDIT_SYSTEM.md](AUDIT_SYSTEM.md) para detalles.
+Herramienta de exportación de métricas y logs a archivos CSV para análisis externo.
+Comando asociado: `data-framework export-logs`
 
-### 6. Monitoring Collector
+### 7. Monitoring Collector
 **Path:** `src/modules/monitoring/`
 
 **Archivo:** `collector.py`
@@ -108,14 +104,27 @@ Agregación de métricas en memoria:
 ### 7. Reporting Module
 **Path:** `src/modules/reporting/`
 
-**Archivo:** `html_generator.py`
+**Archivos:** `html_generator.py`, `executive_report.py`
 
 Genera reportes HTML profesionales:
-- Resumen ejecutivo (status, duración, quality score)
-- Resultados de validación por suite
-- Tabla de validaciones fallidas con severidad
-- Métricas de rendimiento de stages
-- Vulnerabilidades de seguridad detectadas
+- **Técnico:** Resultados de validación detallados y estructura JSON.
+- **Ejecutivo:** Dashboard gerencial con KPIs, estado de salud y tendencias.
+
+### 8. Data Infection Module (Security Testing)
+**Path:** `src/modules/data_infection/`
+
+Motor de caos controlado para pruebas de seguridad y robustez.
+- Inyecta anomalías (Nulls, tipos incorrectos).
+- Simula ataques (SQL Injection, XSS) pre-pipeline.
+- Permite validar si el módulo de *Validation* detecta y bloquea amenazas.
+
+### 9. Airflow Integration
+**Path:** `airflow/`
+
+Capa de orquestación externa.
+- **DAG Factory:** Genera DAGs automáticamente desde archivos YAML.
+- **Docker:** Contenedores dedicados para Scheduler y Webserver.
+- **Aislamiento:** Ejecuta el framework como libreria/CLI dentro de tareas Bash.
 
 ## Flujo de Datos
 
@@ -243,12 +252,11 @@ Ver [examples/pipelines/data_pipeline.yml](../examples/pipelines/data_pipeline.y
 
 **Punto de entrada:** `src/cli.py`
 
-Comandos:
-- `run pipeline` - Ejecutar pipeline desde YAML
-- `export-logs` - Exportar métricas de auditoría a CSV
-- `infect` - Inyectar vulnerabilidades para testing
-
-Ver [CLI_REFERENCE.md](CLI_REFERENCE.md) para detalles de comandos.
+Comandos disponibles:
+- `run pipeline` - Ejecutar pipeline orquestado desde YAML.
+- `infect` - Herramienta de Data Infection (Security Chaos Engineering).
+- `export-logs` - Exportar trazas de auditoría y métricas a CSV.
+- `--version` - Mostrar versión actual del framework.
 
 ## Puntos de Extensión
 
@@ -296,16 +304,3 @@ Ver [CLI_REFERENCE.md](CLI_REFERENCE.md) para detalles de comandos.
 - PostgreSQL 13+ (contenedor Docker incluido)
 - 512MB RAM mínimo
 - 1GB espacio en disco (DB de auditoría crece con ejecuciones)
-
-**Setup de Producción:**
-1. Desplegar PostgreSQL separadamente (almacenamiento persistente)
-2. Configurar conexión en `src/config.py`
-3. Ejecutar `scripts/init_db.sql` para inicializar schema
-4. Configurar monitoreo para crecimiento de DB de auditoría
-5. Programar exportaciones de logs para análisis histórico
-
-**Monitoreo:**
-- Usar comando `export-logs` para extracción de métricas
-- Monitorear tabla `stage_executions` para tendencias de rendimiento
-- Configurar alertas en campo `health_status`
-- Rastrear `validation_summary.quality_score` a lo largo del tiempo

@@ -23,7 +23,10 @@ class ExecutiveReportGenerator:
         if not output_path:
             execution_id = monitoring_summary.get('execution_id', 'unknown')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_path = Path(f"reports/executive_{execution_id[:8]}_{timestamp}.html")
+            pipeline_name = monitoring_summary.get('pipeline_name', 'Pipeline').replace(' ', '_')
+            
+            filename = f"{pipeline_name}_{timestamp}_executive.html"
+            output_path = Path("reports") / filename
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -60,7 +63,7 @@ class ExecutiveReportGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Executive Report - {pipeline_name}</title>
+    <title>Reporte Ejecutivo - {pipeline_name}</title>
     <style>
 {self._get_css()}
     </style>
@@ -71,7 +74,7 @@ class ExecutiveReportGenerator:
             <div class="header-left">
                 <div class="logo">📊</div>
                 <div>
-                    <h1>Pipeline Execution Report</h1>
+                    <h1>Reporte de Ejecución del Pipeline</h1>
                     <p>{pipeline_name} • {start_time[:19]}</p>
                 </div>
             </div>
@@ -82,44 +85,44 @@ class ExecutiveReportGenerator:
         
         <section class="kpis">
             <div class="kpi">
-                <div class="kpi-label">Quality Score</div>
+                <div class="kpi-label">Puntaje de Calidad</div>
                 <div class="kpi-value">{quality_score:.1f}%</div>
                 <div class="kpi-sub {self._get_quality_class(quality_score)}">{quality_status}</div>
             </div>
             <div class="kpi">
-                <div class="kpi-label">Records</div>
+                <div class="kpi-label">Registros</div>
                 <div class="kpi-value">{records:,}</div>
                 <div class="kpi-sub">{duration:.1f}s total</div>
             </div>
             <div class="kpi">
-                <div class="kpi-label">Throughput</div>
+                <div class="kpi-label">Rendimiento</div>
                 <div class="kpi-value">{throughput:,.0f}</div>
-                <div class="kpi-sub">rec/sec</div>
+                <div class="kpi-sub">reg/seg</div>
             </div>
             <div class="kpi">
-                <div class="kpi-label">Validations</div>
+                <div class="kpi-label">Validaciones</div>
                 <div class="kpi-value">{validations_passed}/{validations_passed + validations_failed}</div>
-                <div class="kpi-sub {'error' if validations_failed > 0 else 'success'}">{validations_failed} failed</div>
+                <div class="kpi-sub {'error' if validations_failed > 0 else 'success'}">{validations_failed} fallidas</div>
             </div>
         </section>
         
         <section class="flow">
-            <h2>Pipeline Flow</h2>
+            <h2>Flujo del Pipeline</h2>
             {self._render_flow(stages)}
         </section>
         
         <section class="metrics">
-            <h2>Performance Metrics</h2>
+            <h2>Métricas de Rendimiento</h2>
             {self._render_metrics_table(stages, monitoring)}
         </section>
         
         <section class="summary">
-            <h2>Executive Summary</h2>
+            <h2>Resumen Ejecutivo</h2>
             {self._render_summary(validation_stage, monitoring, stages)}
         </section>
         
         <footer class="footer">
-            <p>Data Pipeline Framework • Execution ID: {execution_id} • Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Data Pipeline Framework • ID de Ejecución: {execution_id} • Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </footer>
     </div>
 </body>
@@ -369,11 +372,11 @@ class ExecutiveReportGenerator:
                 <div class="stage-stats">
                     <div class="stage-stat">
                         <span class="stage-stat-value">{records:,}</span>
-                        <span>records</span>
+                        <span>registros</span>
                     </div>
                     <div class="stage-stat">
                         <span class="stage-stat-value">{duration:.1f}s</span>
-                        <span>duration</span>
+                        <span>duración</span>
                     </div>
                 </div>
             </div>
@@ -400,29 +403,29 @@ class ExecutiveReportGenerator:
         return f"""
         <table class="metrics-table">
             <tr>
-                <th>Metric</th>
-                <th>Value</th>
-                <th>Details</th>
+                <th>Métrica</th>
+                <th>Valor</th>
+                <th>Detalles</th>
             </tr>
             <tr>
-                <td><strong>Data Quality</strong></td>
+                <td><strong>Calidad de Datos</strong></td>
                 <td>{quality_score:.1f}%</td>
-                <td>{passed} of {passed + failed} validations passed ({failed} failed)</td>
+                <td>{passed} de {passed + failed} validaciones exitosas ({failed} fallidas)</td>
             </tr>
             <tr>
-                <td><strong>Processing Speed</strong></td>
-                <td>{throughput:,.0f} rec/s</td>
-                <td>Processed {records:,} records in {duration:.2f} seconds</td>
+                <td><strong>Velocidad de Procesamiento</strong></td>
+                <td>{throughput:,.0f} reg/s</td>
+                <td>Procesados {records:,} registros en {duration:.2f} segundos</td>
             </tr>
             <tr>
-                <td><strong>Pipeline Efficiency</strong></td>
-                <td>{len(stages)} stages</td>
-                <td>All stages completed successfully</td>
+                <td><strong>Eficiencia del Pipeline</strong></td>
+                <td>{len(stages)} etapas</td>
+                <td>Todas las etapas completadas exitosamente</td>
             </tr>
             <tr>
-                <td><strong>Bottleneck</strong></td>
+                <td><strong>Cuello de Botella</strong></td>
                 <td>{slowest[0]}</td>
-                <td>Slowest stage took {slowest[1].get('duration_seconds', 0):.2f}s</td>
+                <td>La etapa más lenta tomó {slowest[1].get('duration_seconds', 0):.2f}s</td>
             </tr>
         </table>
         """
@@ -442,40 +445,40 @@ class ExecutiveReportGenerator:
         if quality_score >= 90:
             cards.append({
                 'class': 'success',
-                'title': '✓ Excellent Data Quality',
-                'text': f'Pipeline achieved {quality_score:.1f}% quality score. All critical validations passed successfully. Data meets business standards.'
+                'title': '✓ Calidad de Datos Excelente',
+                'text': f'Se alcanzó un puntaje de calidad {quality_score:.1f}%. Todas las validaciones críticas pasaron exitosamente. Los datos cumplen los estándares de negocio.'
             })
         elif quality_score >= 75:
             cards.append({
                 'class': 'warning',
-                'title': '⚠ Acceptable Quality',
-                'text': f'Quality score is {quality_score:.1f}%. {failed} validation(s) failed. Review recommended but operations can continue.'
+                'title': '⚠ Calidad Aceptable',
+                'text': f'El puntaje de calidad es {quality_score:.1f}%. {failed} validación(es) fallaron. Se recomienda revisión aunque la operación puede continuar.'
             })
         else:
             cards.append({
                 'class': 'error',
-                'title': '✗ Quality Issues',
-                'text': f'Quality score below threshold ({quality_score:.1f}%). {failed} failures detected. Immediate review required.'
+                'title': '✗ Problemas de Calidad',
+                'text': f'Puntaje de calidad bajo umbral ({quality_score:.1f}%). {failed} fallos detectados. Se requiere revisión inmediata.'
             })
         
         # Performance card
         if throughput > 5000:
             cards.append({
                 'class': 'success',
-                'title': '⚡ High Performance',
-                'text': f'Processing at {throughput:,.0f} rec/s. Pipeline operating at optimal efficiency.'
+                'title': '⚡ Alto Rendimiento',
+                'text': f'Procesando a {throughput:,.0f} reg/s. El pipeline opera con eficiencia óptima.'
             })
         elif throughput > 1000:
             cards.append({
                 'class': 'success',
-                'title': '📊 Standard Performance',
-                'text': f'Processing at {throughput:,.0f} rec/s. Performance within expected parameters.'
+                'title': '📊 Rendimiento Estándar',
+                'text': f'Procesando a {throughput:,.0f} reg/s. Rendimiento dentro de parámetros esperados.'
             })
         else:
             cards.append({
                 'class': 'warning',
-                'title': '🔧 Optimization Opportunity',
-                'text': f'Processing {throughput:,.0f} rec/s. Consider performance tuning for faster execution.'
+                'title': '🔧 Oportunidad de Optimización',
+                'text': f'Procesando a {throughput:,.0f} reg/s. Considere ajustes de rendimiento para ejecución más rápida.'
             })
         
         html = ['<div class="summary-cards">']
@@ -497,11 +500,11 @@ class ExecutiveReportGenerator:
         return 'critical'
     
     def _get_quality_status(self, score: float) -> str:
-        if score >= 95: return 'Excellent'
-        elif score >= 85: return 'Good'
-        elif score >= 75: return 'Acceptable'
-        elif score >= 60: return 'Needs Review'
-        return 'Critical'
+        if score >= 95: return 'Excelente'
+        elif score >= 85: return 'Bueno'
+        elif score >= 75: return 'Aceptable'
+        elif score >= 60: return 'Revisión'
+        return 'Crítico'
     
     def _get_quality_class(self, score: float) -> str:
         if score >= 85: return 'success'

@@ -1125,4 +1125,4 @@ python scripts/db_utils.py --help
 ---
 
 **Última actualización:** Febrero 2026  
-**Versión:** 2.0.0
+**Versión:** 1.0.0

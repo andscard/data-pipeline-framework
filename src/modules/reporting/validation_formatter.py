@@ -81,7 +81,7 @@ class ValidationFormatter:
              if formatter:
                  try:
                      inner_desc = formatter(kwargs)
-                     base_desc = f"<strong>Regla de Negocio (Si {condition}):</strong> {inner_desc}"
+                     base_desc = f"Regla de Negocio <strong>(Si {condition}):</strong> {inner_desc}"
                  except: pass
 
         if not base_desc:

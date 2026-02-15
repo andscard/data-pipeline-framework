@@ -60,6 +60,35 @@ Cada pipeline se descompone en 5 tareas ejecutables independientemente:
 
 **Beneficio**: Si falla la validación, puedes corregir el problema y re-ejecutar solo desde `2_validation` sin repetir la ingestion.
 
+## Configuración Docker
+
+El archivo [`docker-compose.airflow.yml`](../docker-compose.airflow.yml) contiene la definición de la infraestructura de Airflow. Se utiliza en conjunto con `docker-compose.yml` (que levanta PostgreSQL).
+
+### Servicios
+
+| Servicio | Propósito | Configuración Clave |
+|----------|-----------|---------------------|
+| **airflow-init** | Inicialización (One-off) | • Instala dependencias del framework<br>• Migra la BD de Airflow<br>• Crea usuario admin/admin<br>• Se detiene al finalizar |
+| **airflow-scheduler** | Orquestador | • Monitorea carpetas de DAGs<br>• Lanza tareas programadas<br>• Recarga cambios automáticamente |
+| **airflow-webserver** | UI (Puerto 8080) | • Interfaz gráfica<br>• Gestión de usuarios y conexiones<br>• Logs en tiempo real |
+
+### Volúmenes (Persistencia)
+
+Mapeos entre el host (tu máquina) y el contenedor para desarrollo en caliente:
+
+- `./airflow/dags` → `/opt/airflow/dags`: Código de DAGs (Python).
+- `./airflow/logs` → `/opt/airflow/logs`: Logs de ejecución.
+- `./` → `/opt/airflow/framework`: **Código fuente del framework completo**. Permite que Airflow ejecute tu código local sin reconstruir la imagen.
+
+### Variables de Entorno
+
+Definen cómo Airflow interactúa con el framework y la base de datos:
+
+- `AIRFLOW__CORE__EXECUTOR`: `LocalExecutor` (ejecuta tareas localmente en paralelo).
+- `dags_folder`: Apunta a `/opt/airflow/dags`.
+- `POSTGRES_*`: Credenciales para que el framework conecte a la BD de negocio (diferente a la BD de metadata de Airflow).
+- `PYTHONPATH`: Incluye `/opt/airflow/framework` para importar módulos del proyecto (`src.*`).
+
 ## Inicio
 
 ### Levantar Airflow

@@ -16,7 +16,7 @@ Funcionamiento:
 1. Escanea directorio examples/ buscando *.yml
 2. Lee metadata del pipeline (name, schedule, retries)
 3. Crea un DAG por cada pipeline
-4. El DAG ejecuta: python -m src.cli run pipeline -c <config>
+4. El DAG ejecuta: data-framework run pipeline -c <config>
 
 Configuración YAML:
 ```yaml
@@ -42,7 +42,7 @@ Schedules soportados:
 - None: Solo ejecución manual
 
 Autor: Data Team
-Versión: 2.0.0
+Versión: 1.0.0
 """
 
 import os

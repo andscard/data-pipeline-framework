@@ -183,7 +183,7 @@ Write-Host "  3. Infectar datos:     data-framework infect -c examples/infection
 Write-Host "`nO USA EL METODO TRADICIONAL:`n" -ForegroundColor Cyan
 Write-Host "  1. Activar entorno:    .venv\Scripts\Activate.ps1" -ForegroundColor White
 Write-Host "  2. Ver estado DB:      python scripts/db_utils.py status" -ForegroundColor White
-Write-Host "  3. Ejecutar pipeline:  python -m src.cli run pipeline -c examples/pipeline.yml" -ForegroundColor White
+Write-Host "  3. Ejecutar pipeline:  data-framework run pipeline -c examples/pipeline.yml" -ForegroundColor White
 Write-Host "`nCOMANDOS UTILES:`n" -ForegroundColor Cyan
 Write-Host "  python scripts/db_utils.py status|stats|executions" -ForegroundColor White
 Write-Host "  docker-compose down" -ForegroundColor Gray

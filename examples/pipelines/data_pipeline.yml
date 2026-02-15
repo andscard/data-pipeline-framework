@@ -82,7 +82,7 @@ validation:
     # ========================================================================
     raw_customers:
       security_level: strict
-      quality_threshold: 0.95
+      quality_threshold: 0.90
       
       columns:
         # ---- IDENTIFICADORES ----

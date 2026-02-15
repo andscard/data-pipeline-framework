@@ -9,26 +9,20 @@ Framework production-ready para construir pipelines de datos con validación int
 - Transformación y enriquecimiento de datos
 - Salida multi-formato (CSV, Excel, Parquet, PostgreSQL)
 
-**Calidad y Seguridad:**
-- 40+ tipos de validación semántica
-- Detección de vulnerabilidades OWASP Top 10+
-- Verificaciones de cumplimiento (GDPR, PCI-DSS, HIPAA, SOC2)
-- Detección de outliers estadísticos
-- Validación cross-field
+**Validación y Seguridad:**
+- 40+ tipos de validación semántica (PII, financieras, contacto).
+- Protección contra vulnerabilidades OWASP Top 10 (SQLi, XSS, etc.).
+- Cumplimiento de normativas (GDPR, PCI-DSS).
 
-**Auditoría y Monitoreo:**
-- Sistema de auditoría PostgreSQL con 6 tablas
-- Seguimiento de rendimiento a nivel de stage
-- Cálculo de quality score
-- Monitoreo de health status
-- Exportación CSV para análisis histórico
+**Observabilidad:**
+- Sistema de auditoría detallado en PostgreSQL.
+- Dashboard HTML ejecutivo (Health Status, KPIs).
+- Exportación de métricas para análisis externo.
 
-**Reportes:**
-- Reportes HTML profesionales
-- Resúmenes ejecutivos
-- Resultados de validación detallados
-- Vulnerabilidades de seguridad
-- Métricas de rendimiento
+**Airflow Integration:**
+- Pipelines como código (DAGs automáticos).
+- Recuperación ante fallos y reintentos.
+- Monitoreo de tareas en tiempo real.
 
 ## Inicio Rápido
 
@@ -73,7 +67,7 @@ data-framework --help
 data-framework run pipeline -c examples/pipelines/data_pipeline.yml
 
 # Ver reporte generado
-start reports\execution_*.html
+start reports\CustomerPipeline_*_executiveeline_*_executive.html
 ```
 
 ## Comandos CLI
@@ -100,23 +94,22 @@ Exporta métricas de auditoría a archivos CSV.
 data-framework export-logs -n <pipeline_name> [-o <output_dir>]
 ```
 
-**Genera 6 archivos CSV:**
-- `executions_summary.csv` - Historial de ejecuciones
-- `stages_performance.csv` - Métricas de stages
-- `validation_quality.csv` - Quality scores por suite
-- `validation_failures.csv` - Registros detallados de fallos
-- `timeline.csv` - Timeline cronológico de ejecuciones
-- `errors_analysis.csv` - Agregación de errores
+**Salida:**
+```
+Exporting logs for pipeline: CustomerDataPipeline
+...
+✓ executions_summary: 15 rows
+✓ stages_performance: 60 rows
+...
+```
 
 **Casos de uso:**
 - Optimización de rendimiento
 - Análisis de tendencias de calidad
-- Análisis de causa raíz de fallos
-- Reportes de cumplimiento
 
 ### infect
 
-Inyecta vulnerabilidades para testing de seguridad.
+Inyecta vulnerabilidades para testing de seguridad (Chaos Engineering).
 
 ```bash
 data-framework infect -c examples/infection_config.yml
@@ -201,6 +194,10 @@ docker-compose -f docker-compose.yml -f docker-compose.airflow.yml down
                             ┌─────────▼─────────┐
                             │  Audit System     │
                             │  (PostgreSQL)     │
+                            └─────────┬─────────┘
+                                      │
+                            ┌─────────▼─────────┐
+                            │   Log Exporter    │ ──▶ CSV Reports
                             └───────────────────┘
 ```
 
@@ -210,6 +207,7 @@ docker-compose -f docker-compose.yml -f docker-compose.airflow.yml down
 - **Validation Module** - Verificaciones de calidad, seguridad y cumplimiento
 - **Transformation Module** - Filtrado y enriquecimiento de datos
 - **Audit System** - Seguimiento PostgreSQL con 6 tablas
+- **Log Exporter** - Herramienta CLI para extraer métricas y logs a CSV
 - **Reporting Module** - Generación de reportes HTML profesionales
 
 Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para detalles.
@@ -260,11 +258,11 @@ Validación production-ready que cubre:
 - XXE (XML external entity), SSRF (server-side request forgery)
 - Data leakage (API keys, private keys, JWT tokens, passwords)
 
-**Cumplimiento:**
-- GDPR (detección y protección de PII)
-- PCI-DSS (seguridad de datos de tarjetas de crédito)
-- HIPAA (protección de registros médicos)
-- SOC2 (prevención de fuga de información de debug)
+**Cumplimiento (Detección de Patrones):**
+- GDPR: Identificación de PII (DNI, SSN, emails).
+- PCI-DSS: Detección de números de tarjeta y CVV expuestos.
+- HIPAA: Identificación de Medical Record Numbers (MRN).
+- SOC2: Detección de fugas de información técnica (stack traces).
 
 **40+ Tipos Semánticos:**
 - Identificadores: `uuid`, `id`
@@ -297,28 +295,23 @@ ingestion:
       output_dataset: "raw_customers"
 
 validation:
-  great_expectations:
-    - dataset: "raw_customers"
-      suites:
-        - name: "01_Schema_Validation"
-          expectations:
-            - expectation_type: "expect_table_columns_to_match_set"
-              column_set: ["id", "name", "email", "phone"]
-        
-        - name: "02_Data_Quality"
-          expectations:
-            - expectation_type: "expect_column_values_to_not_be_null"
-              column: "name"
-            - expectation_type: "expect_column_values_to_be_unique"
-              column: "email"
-        
-        - name: "03_Security_OWASP"
-          expectations:
-            - expectation_type: "expect_column_values_to_not_match_regex"
-              column: "name"
-              regex: "(?i)(\\bOR\\b.*=.*|;.*DROP|<script)"
-              severity: "critical"
-
+  schema:
+    raw_customers:
+      security_level: strict
+      quality_threshold: 0.90
+      
+      columns:
+        customer_id:
+          type: uuid
+          required: true
+          unique: true
+        name:
+          type: name
+          required: true
+        email:
+          type: email
+          required: true
+          unique: true
 transformation:
   steps:
     - name: "filter_active"
@@ -422,89 +415,19 @@ data-pipeline-framework/
 │   └── modules/
 │       ├── data_infection/         # Inyección de vulnerabilidades
 │       ├── ingestion/              # Conectores de datos
-│       │   └── connectors/         # CSV, JSON, PostgreSQL
 │       ├── validation/             # Validación de calidad
 │       ├── transformation/         # Transformación de datos
 │       ├── auditing/               # Sistema de auditoría
-│       │   ├── audit_manager.py   # API de auditoría
-│       │   └── log_exporter.py    # Exportación CSV
 │       ├── monitoring/             # Recolección de métricas
 │       └── reporting/              # Reportes HTML
-├── docs/
-│   ├── ARCHITECTURE.md             # Arquitectura del sistema
-│   ├── AUDIT_SYSTEM.md             # Schema de base de datos de auditoría
-│   ├── CLI_REFERENCE.md            # Referencia de comandos
-│   ├── DATABASE.md                 # Gestión de base de datos
-│   ├── EXPORT_LOGS.md              # Guía de exportación de logs
-│   └── VALIDATION_SYSTEM.md        # Tipos de validación
-├── examples/
-│   ├── pipelines/data_pipeline.yml       # Ejemplo de pipeline completo
-│   ├── pipelines/infected_data_pipeline.yml       # Ejemplo de pipeline con datos infectados
-│   └── infection_config.yml        # Configuración de inyección de ataques
-├── scripts/
-│   ├── init_db.sql                 # Inicialización de base de datos
-│   ├── db_utils.py                 # Utilidades de base de datos
-│   └── generate_sample_data.py     # Generador de datos de ejemplo
-├── data/
-│   ├── samples/                    # Datasets de ejemplo
-│   └── output/                     # Resultados de procesamiento
-├── reports/                        # Reportes HTML
-├── logs/                           # Logs CSV exportados
-├── docker-compose.yml              # Contenedor PostgreSQL
+├── airflow/                        # Integración con Apache Airflow
+├── docs/                           # Documentación detallada
+├── examples/                       # Pipelines y configuraciones de ejemplo
+├── scripts/                        # Scripts de utilidad (DB, datos sintéticos)
+├── data/                           # Directorio de datos (state, logs, samples)
+├── reports/                        # Reportes HTML generados
+├── docker-compose.yml              # Servicios principales (PostgreSQL)
 └── requirements.txt                # Dependencias Python
-```
-
-## Flujos de Trabajo
-
-### Flujo Básico (Datos Limpios)
-
-```bash
-# 1. Generar datos de ejemplo
-python scripts/generate_sample_data.py -c 10000 -t 50000
-
-# 2. Ejecutar pipeline
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-
-# 3. Ver reporte HTML
-start reports\execution_*.html
-```
-
-**Esperado:** Quality score 100%, 0 vulnerabilidades
-
-### Flujo de Testing de Seguridad
-
-```bash
-# 1. Generar datos limpios
-python scripts/generate_sample_data.py
-
-# 2. Inyectar vulnerabilidades
-data-framework infect -c examples/infection_config.yml
-
-# 3. Actualizar configuración del pipeline para usar datos infectados
-# Editar examples/pipelines/data_pipeline.yml:
-#   path: "data/output/customers_infected.csv"
-
-# 4. Ejecutar pipeline de validación
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-
-# 5. Revisar hallazgos de seguridad
-start reports\execution_*.html
-```
-
-**Esperado:** Quality score ~23%, 3+ vulnerabilidades detectadas
-
-### Flujo de Análisis de Rendimiento
-
-```bash
-# 1. Ejecutar pipeline
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-
-# 2. Exportar métricas
-data-framework export-logs -n CustomerDataPipeline -o analysis/
-
-# 3. Analizar cuellos de botella
-# Abrir analysis/stages_performance.csv
-# Ordenar por duration_seconds DESC para identificar stages más lentos
 ```
 
 ## Instalación Manual
@@ -581,20 +504,8 @@ data-framework --help
 
 **Alternativa (si persiste el error):**
 ```powershell
-# Usar comando directo desde venvtgres
-
-# Ver logs
+# Ver logs del contenedor
 docker logs framework_postgres
-```
-
-### Error de Configuración del Pipeline
-
-**Error:** `yaml.scanner.ScannerError: mapping values are not allowed here`
-
-**Solución:**a-framework --help
-
-# Opción 2: Usar comando directo
-.\.venv\Scripts\python.exe -m src.cli run pipeline -c examples/pipelines/data_pipeline.yml
 ```
 
 ### Sin Datos de Exportación
@@ -612,7 +523,6 @@ data-framework export-logs -n CustomerDataPipeline
 
 ## Documentación
 
-- **[SETUP.md](SETUP.md)** - Guía completa de instalación paso a paso
 - **[AIRFLOW.md](docs/AIRFLOW.md)** - Integración con Apache Airflow para orquestación
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Arquitectura del sistema y flujo de datos
 - **[AUDIT_SYSTEM.md](docs/AUDIT_SYSTEM.md)** - Schema de base de datos y API de auditoría
@@ -622,7 +532,7 @@ data-framework export-logs -n CustomerDataPipeline
 - **[VALIDATION_SYSTEM.md](docs/VALIDATION_SYSTEM.md)** - Tipos de validación y configuración
 
 ## Requisitos
-hon 3.10+
+- Python 3.10+
 - Docker (para PostgreSQL)
 - 512MB RAM mínimo
 - 1GB espacio en disco
