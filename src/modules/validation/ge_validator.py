@@ -29,8 +29,6 @@ class GreatExpectationsValidator:
         if context_root_dir:
             self.context = gx.get_context(context_root_dir=str(context_root_dir))
         else:
-            # Contexto efímero (en memoria, sin persistencia)
-            # Great Expectations 0.18.2 requiere project_config
             project_config = {
                 "config_version": 3.0,
                 "plugins_directory": None,
@@ -184,7 +182,13 @@ class GreatExpectationsValidator:
             )
             
             # Ejecutar validación
-            validation_result = validator.validate()
+            validation_result = validator.validate(
+                result_format={
+                    "result_format": "SUMMARY",
+                    "partial_unexpected_count": 20,
+                    "include_unexpected_rows": True
+                }
+            )
             
             # Procesar resultados
             result = self._process_validation_result(
@@ -240,21 +244,31 @@ class GreatExpectationsValidator:
         for result in results:
             if not result.success:
                 result_dict = result.result if hasattr(result.result, '__dict__') else result.result
+                if result_dict is None: result_dict = {}
                 
-                # SOLO AGREGAR SI TIENE INFORMACIÓN ÚTIL
-                # Si result_dict está vacío {}, es un falso positivo de GE
-                if result_dict and len(result_dict) > 0:
-                    failed_details.append({
-                        'expectation_type': result.expectation_config.expectation_type,
-                        'kwargs': result.expectation_config.kwargs,
-                        'observed_value': result_dict.get('observed_value'),
-                        'element_count': result_dict.get('element_count'),
-                        'missing_count': result_dict.get('missing_count'),
-                        'unexpected_count': result_dict.get('unexpected_count'),
-                        'unexpected_percent': result_dict.get('unexpected_percent'),
-                        'unexpected_index_list': result_dict.get('unexpected_index_list', [])[:10] if result_dict.get('unexpected_index_list') else [],
-                        'partial_unexpected_list': result_dict.get('partial_unexpected_list', [])[:5] if result_dict.get('partial_unexpected_list') else []
-                    })
+                u_count = result_dict.get('unexpected_count')
+                p_list = result_dict.get('partial_unexpected_list', [])
+                full_list = result_dict.get('unexpected_list', [])
+
+                if u_count is None:
+                    if full_list: 
+                        u_count = len(full_list)
+                    elif p_list: 
+                        u_count = len(p_list)
+                
+                e_count = result_dict.get('element_count')
+                
+                failed_details.append({
+                    'expectation_type': result.expectation_config.expectation_type,
+                    'kwargs': result.expectation_config.kwargs,
+                    'observed_value': result_dict.get('observed_value'),
+                    'element_count': e_count,
+                    'missing_count': result_dict.get('missing_count'),
+                    'unexpected_count': u_count,
+                    'unexpected_percent': result_dict.get('unexpected_percent'),
+                    'unexpected_index_list': result_dict.get('unexpected_index_list', [])[:10] if result_dict.get('unexpected_index_list') else [],
+                    'partial_unexpected_list': p_list[:5] if p_list else (full_list[:5] if full_list else [])
+                })
         
         success_rate = (passed_expectations / total_expectations * 100) if total_expectations > 0 else 0
         

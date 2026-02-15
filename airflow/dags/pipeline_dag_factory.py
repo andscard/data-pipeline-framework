@@ -55,6 +55,8 @@ import yaml
 # Airflow imports
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+from airflow.exceptions import AirflowFailException
 from airflow.utils.dates import days_ago
 
 # ============================================================================
@@ -63,6 +65,17 @@ from airflow.utils.dates import days_ago
 
 # Path al framework (montado en /opt/airflow/framework)
 FRAMEWORK_PATH = Path("/opt/airflow/framework")
+if str(FRAMEWORK_PATH) not in sys.path:
+    sys.path.append(str(FRAMEWORK_PATH))
+
+try:
+    from src.pipeline_executor import PipelineExecutor
+    from src.modules.validation.exceptions import QualityThresholdError
+except ImportError:
+    # Fallback para cuando el DAG se parsea fuera del contenedor (IDE/Local)
+    print("⚠️  Warning: src.pipeline_executor not found. Framework path required.")
+    pass
+
 PIPELINES_DIR = FRAMEWORK_PATH / "examples" / "pipelines"
 CLI_COMMAND = "data-framework"  # Comando global instalado en Docker
 
@@ -101,9 +114,37 @@ SCHEDULE_PRESETS = {
 }
 
 
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
+def execute_pipeline(pipeline_name: str, config_path: str):
+    """
+    Función ejecutable por PythonOperator.
+    Lanza la ejecución del pipeline dentro del proceso worker de Airflow.
+    """
+    import yaml
+    from src.pipeline_executor import PipelineExecutor
+    from src.modules.validation.exceptions import QualityThresholdError
+    
+    print(f"🚀 Iniciando pipeline: {pipeline_name}")
+    print(f"📄 Config: {config_path}")
+    
+    try:
+        # Cargar configuración
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            
+        # Ejecutar
+        executor = PipelineExecutor(pipeline_name, config)
+        executor.execute()
+        print("✅ Pipeline finalizado exitosamente")
+        
+    except QualityThresholdError as e:
+        print(f"❌ FALLO DE CALIDAD: {e}")
+        # Re-lanzar para que Airflow lo detecte como fallo NO reintentable
+        # (QualityThresholdError hereda de AirflowFailException)
+        raise e
+        
+    except Exception as e:
+        print(f"❌ Error general en pipeline: {e}")
+        raise e
 
 def load_pipeline_config(yaml_path: Path) -> Optional[Dict[str, Any]]:
     """
@@ -179,6 +220,38 @@ def parse_airflow_config(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def execute_pipeline_stage(pipeline_name: str, config_path: str, stage: str):
+    """
+    Función ejecutable por PythonOperator para correr una etapa específica.
+    """
+    import yaml
+    from src.pipeline_executor import PipelineExecutor
+    from src.modules.validation.exceptions import QualityThresholdError
+    
+    print(f"🚀 Iniciando etapa {stage} para: {pipeline_name}")
+    
+    try:
+        # Cargar configuración desde el path absoluto
+        # Nota: config_path viene como relativo 'examples/...', ajustamos a absoluto
+        abs_config_path = FRAMEWORK_PATH / config_path
+        
+        with open(abs_config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            
+        # Ejecutar etapa
+        executor = PipelineExecutor(pipeline_name, config)
+        executor.execute(stage=stage)
+        print(f"✅ Etapa {stage} finalizada exitosamente")
+        
+    except QualityThresholdError as e:
+        print(f"❌ FALLO DE CALIDAD IRRECUPERABLE: {e}")
+        # Esto detendrá los reintentos automáticos
+        raise e
+        
+    except Exception as e:
+        print(f"❌ Error en etapa {stage}: {e}")
+        raise e
+
 def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
     """
     Crea un DAG de Airflow para un pipeline del framework.
@@ -223,39 +296,55 @@ def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
     # ========================================================================
     # Esto permite ver el progreso granular y re-ejecutar etapas específicas
     
-    # Tarea 1: Ingestion - Carga de datos desde fuentes
-    ingestion_task = BashOperator(
+    # 1. Ingestion
+    ingestion_task = PythonOperator(
         task_id='1_ingestion',
-        bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} run pipeline -c {config_path} --stage ingestion",
-        env=TASK_ENV,
+        python_callable=execute_pipeline_stage,
+        op_kwargs={
+            'pipeline_name': pipeline_name,
+            'config_path': config_path,
+            'stage': 'ingestion'
+        },
         dag=dag,
     )
     
-    # Tarea 2: Validation - Validación de calidad y esquema
-    validation_task = BashOperator(
+    # 2. Validation
+    validation_task = PythonOperator(
         task_id='2_validation',
-        bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} run pipeline -c {config_path} --stage validation",
-        env=TASK_ENV,
+        python_callable=execute_pipeline_stage,
+        op_kwargs={
+            'pipeline_name': pipeline_name,
+            'config_path': config_path,
+            'stage': 'validation'
+        },
         dag=dag,
     )
     
-    # Tarea 3: Transformation - Transformaciones y agregaciones
-    transformation_task = BashOperator(
+    # 3. Transformation
+    transformation_task = PythonOperator(
         task_id='3_transformation',
-        bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} run pipeline -c {config_path} --stage transformation",
-        env=TASK_ENV,
+        python_callable=execute_pipeline_stage,
+        op_kwargs={
+            'pipeline_name': pipeline_name,
+            'config_path': config_path,
+            'stage': 'transformation'
+        },
         dag=dag,
     )
     
-    # Tarea 4: Output - Escritura de datos procesados
-    output_task = BashOperator(
+    # 4. Output
+    output_task = PythonOperator(
         task_id='4_output',
-        bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} run pipeline -c {config_path} --stage output",
-        env=TASK_ENV,
+        python_callable=execute_pipeline_stage,
+        op_kwargs={
+            'pipeline_name': pipeline_name,
+            'config_path': config_path,
+            'stage': 'output'
+        },
         dag=dag,
     )
     
-    # Tarea 5: Export Logs - Exportación de logs y reportes
+    # 5. Export Logs (mantenemos BashOperator o PythonOperator)
     export_logs = BashOperator(
         task_id='5_export_logs',
         bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} export-logs -n {pipeline_name} -o data/output/logs",

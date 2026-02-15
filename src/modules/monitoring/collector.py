@@ -332,7 +332,31 @@ class MonitoringCollector:
         Returns:
             Diccionario con todas las métricas
         """
-        return self.metrics.to_dict()
+        summary = self.metrics.to_dict()
+        
+        # Si hay un stage activo (corriendose ahora mismo), lo agregamos al resumen
+        if self._current_stage:
+            current_stage_dict = self._current_stage.to_dict()
+            summary['stages'][self._current_stage.stage_name] = current_stage_dict
+            
+            # Sumar métricas del stage actual a los totales
+            summary['total_errors'] += len(self._current_stage.errors)
+            summary['total_warnings'] += len(self._current_stage.warnings)
+            
+            if self._current_stage.stage_name == "VALIDATION" and self._current_stage.quality_score is not None:
+                # Recalcular overall quality score incluyendo el stage actual
+                passed_stages = [s for s in self.metrics.stages.values() if s.quality_score is not None]
+                current_score = self._current_stage.quality_score
+                
+                total_score = sum(s.quality_score for s in passed_stages) + current_score
+                count = len(passed_stages) + 1
+                summary['overall_quality_score'] = round(total_score / count, 2)
+            
+            # Si el stage actual tiene errores, el status global debe reflejarlo
+            if len(self._current_stage.errors) > 0:
+                summary['health_status'] = 'critical'
+        
+        return summary
     
     def get_stage_metrics(self, stage_name: str) -> Optional[StageMetrics]:
         """Obtener métricas de una etapa específica"""

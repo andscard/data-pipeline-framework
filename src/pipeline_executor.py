@@ -29,6 +29,7 @@ from src.modules.reporting.html_generator import HTMLReportGenerator
 from src.modules.reporting.executive_report import ExecutiveReportGenerator
 from src.modules.ingestion.config import POSTGRES_CONFIG
 from src.config import config
+from src.modules.validation.exceptions import QualityThresholdError
 # Security detection moved to validation stage
 # Data infection happens PRE-PIPELINE using data_infection module
 
@@ -48,6 +49,7 @@ class ExecutionResult:
         self.records_processed = 0
         self.records_failed = 0
         self.errors = []
+        self.exception = None  # Store the actual exception object
         self.report_path = None
         self.monitoring_summary = None  # Métricas de MonitoringCollector
         
@@ -319,7 +321,13 @@ class PipelineExecutor:
             
         except Exception as e:
             result.errors.append(str(e))
+            result.exception = e  # Store exception object
+            result.status = "failed"
             result.complete("failed")
+            
+            # Re-raise explicit QualityThresholdError if caller should handle it directly
+            # This allows Airflow/CLI to detect "no-retry" conditions
+            should_raise = isinstance(e, QualityThresholdError)
             
             # Finalizar monitoring incluso en caso de error
             if self.monitoring:
@@ -331,8 +339,14 @@ class PipelineExecutor:
                 status="failed",
                 records_processed=result.records_processed,
                 records_failed=result.records_failed,
-                error_message=str(e)
+                error_message=str(e),
+                # Add quality score if we have monitoring summary
+                quality_score=result.monitoring_summary.get('overall_quality_score') if result.monitoring_summary else 0
             )
+            
+            if should_raise:
+                 logger.error("Raising QualityThresholdError for orchestrator handling")
+                 raise e
         
         finally:
             self.audit.close()
@@ -446,6 +460,9 @@ class PipelineExecutor:
             failed_validations = 0
             total_records_validated = 0
             
+            # Estructura para trackear estadísticas por dataset
+            dataset_stats = {}
+
             # Validación de esquema con Pandera
             schema_validations = validation_config.get('schema_validation', [])
             for schema_config in schema_validations:
@@ -454,6 +471,12 @@ class PipelineExecutor:
                 passed_validations += passed
                 failed_validations += failed
                 total_records_validated += records
+                
+                # Track per dataset
+                ds_name = schema_config.get('input_dataset', 'unknown')
+                if ds_name not in dataset_stats: dataset_stats[ds_name] = {'passed': 0, 'total': 0}
+                dataset_stats[ds_name]['passed'] += passed
+                dataset_stats[ds_name]['total'] += (passed + failed)
             
             # Validación de calidad con Great Expectations
             expectations = validation_config.get('expectations', [])
@@ -463,24 +486,84 @@ class PipelineExecutor:
                 passed_validations += passed
                 failed_validations += failed
                 total_records_validated += records
+
+                # Track per dataset
+                ds_name = expectation_config.get('dataset', 'unknown')
+                if ds_name not in dataset_stats: dataset_stats[ds_name] = {'passed': 0, 'total': 0}
+                dataset_stats[ds_name]['passed'] += passed
+                dataset_stats[ds_name]['total'] += (passed + failed)
             
             # Calcular score de calidad
+            quality_score = 0
             if total_validations > 0:
                 quality_score = (passed_validations / total_validations) * 100
-                stage.set_quality_metrics(
-                    score=quality_score,
-                    passed=passed_validations,
-                    failed=failed_validations
-                )
+            
+            stage.set_quality_metrics(
+                score=quality_score,
+                passed=passed_validations,
+                failed=failed_validations
+            )
+            
+            # Contar registros únicos validados (no multiplicar por número de suites)
+            unique_records = sum(len(self.datasets.get(name, [])) for name in self.datasets.keys())
+            stage.set_records(input=unique_records, output=unique_records, failed=0)
+            
+            logger.info(f"\n[VALIDATION] Quality Score: {quality_score:.1f}%")
+            logger.info(f"  Passed: {passed_validations}/{total_validations}")
+            logger.info(f"  Failed: {failed_validations}/{total_validations}")
+            logger.info(f"  Records validated: {unique_records:,}")
+
+            # --- VALIDACIÓN DE UMBRALES POR DATASET ---
+            # Verificar si algún dataset individual no cumple su umbral específico
+            
+            # Obtener configuración de schemas (si existe)
+            schemas_config = validation_config.get('schema', {})
+            global_threshold = validation_config.get('min_quality_score') or validation_config.get('quality_threshold')
+
+            validation_errors = []
+
+            for ds_name, stats in dataset_stats.items():
+                if stats['total'] == 0: continue
                 
-                # Contar registros únicos validados (no multiplicar por número de suites)
-                unique_records = sum(len(self.datasets.get(name, [])) for name in self.datasets.keys())
-                stage.set_records(input=unique_records, output=unique_records, failed=0)
+                ds_score = (stats['passed'] / stats['total']) * 100
                 
-                logger.info(f"\n[VALIDATION] Quality Score: {quality_score:.1f}%")
-                logger.info(f"  Passed: {passed_validations}/{total_validations}")
-                logger.info(f"  Failed: {failed_validations}/{total_validations}")
-                logger.info(f"  Records validated: {unique_records:,}")
+                # Buscar umbral específico para este dataset
+                ds_config = schemas_config.get(ds_name, {})
+                # Prioridad: 1. Dataset specific, 2. Global, 3. Default safe (0 si no hay nada definido)
+                ds_threshold = ds_config.get('quality_threshold') or global_threshold
+                
+                if ds_threshold is not None:
+                    # Normalizar a 0-100
+                    if ds_threshold <= 1.0: ds_threshold *= 100
+                    
+                    if ds_score < ds_threshold:
+                        msg = f"Dataset '{ds_name}' Quality Score ({ds_score:.1f}%) is below configured threshold ({ds_threshold:.1f}%)"
+                        logger.error(f"❌ {msg}")
+                        validation_errors.append(msg)
+                    else:
+                        logger.info(f"✓ Dataset '{ds_name}' passed quality check ({ds_score:.1f}% >= {ds_threshold:.1f}%)")
+            
+            # Registrar errores de umbral en el stage ANTES de generar reporte
+            # Esto asegura que el MonitoringCollector marque el status como 'failed'
+            if validation_errors:
+                for err in validation_errors:
+                    stage.add_error(err)
+            
+            # GENERAR REPORTE ANTES DE FALLAR
+            # Es crítico generar el reporte HTML incluso si el pipeline va a fallar por calidad
+            # para que el usuario pueda ver QUÉ falló.
+            try:
+                self.monitoring.finalize() # Asegurar que métricas estén listas
+                monitoring_summary = self.monitoring.get_summary()
+                report_path = self._generate_validation_report(monitoring_summary)
+                if report_path:
+                    logger.info(f"✓ Reporte de Validación generado exitosamente: {report_path}")
+            except Exception as e:
+                logger.error(f"❌ Error crítico generando reporte: {e}")
+            
+            if validation_errors:
+                # Fail the pipeline immediately AFTER generating the report
+                raise QualityThresholdError(f"Pipeline failed due to quality thresholds: {'; '.join(validation_errors)}")
             
             # Completar tracking en BD con métricas
             self.audit.complete_stage(
@@ -706,14 +789,25 @@ class PipelineExecutor:
     def _generate_validation_report(self, monitoring_summary: dict):
         """Generar reporte técnico de validación."""
         try:
+            logger.info("Generando reporte de validación...")
             validation_results = self.audit.get_validation_results(self.execution_id)
             validation_summary = self.audit.get_validation_summary(self.execution_id)
+            
+            # --- Extraer Quality Thresholds del Config ---
+            quality_thresholds = {}
+            validation_config = self.config.get('validation', {}).get('schema', {})
+            for dataset_name, dataset_config in validation_config.items():
+                if isinstance(dataset_config, dict):
+                    threshold = dataset_config.get('quality_threshold')
+                    if threshold is not None:
+                        quality_thresholds[dataset_name] = threshold
             
             audit_data = {
                 'execution_id': self.execution_id,
                 'pipeline_id': self.pipeline_id,
                 'validation_results': validation_results,
-                'validation_summary': validation_summary
+                'validation_summary': validation_summary,
+                'quality_thresholds': quality_thresholds # Pasar thresholds al reporte
             }
             
             report_generator = HTMLReportGenerator()
@@ -723,10 +817,11 @@ class PipelineExecutor:
                 include_stages=False,
                 report_type="technical"
             )
-            logger.info(f"✓ Reporte de Validación: {report_path}")
+            return report_path
             
         except Exception as e:
-            logger.warning(f"No se pudo generar reporte de validación: {e}")
+            logger.error(f"No se pudo generar reporte de validación: {e}")
+            return None
     
     def _generate_executive_report(self, monitoring_summary: dict):
         """Generar reporte ejecutivo."""

@@ -274,7 +274,7 @@ Validación production-ready que cubre:
 - Dirección: `postal_code_es`, `postal_code_us`, `country_code`
 - Web: `url`, `url_secure`, `ipv4`, `ipv6`, `domain`
 - Texto: `name`, `text`, `slug`, `alphanumeric`, `enum`
-- Numérico: `integer`, `numeric`, `percentage`, `latitude`, `longitude`
+- Numérico: `integer`, `numeric`, `percentage`, `probability`
 - Fecha: `date`, `datetime`, `timestamp`, `year`
 - Booleano: `boolean`
 

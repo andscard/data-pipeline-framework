@@ -69,7 +69,7 @@ email:
 ssn:
   type: ssn
   required: false
-  encrypted: true  # Debe estar encriptado en reposo
+  # La validación verificará que NO existan patrones de SSN visibles
 ```
 
 **Seguridad:**
@@ -150,9 +150,10 @@ full_name:
   required: true
   min_length: 2
   max_length: 100
-  no_injection: true       # SQL, NoSQL, command
-  no_xss: true             # Patrones XSS
-  no_suspicious_chars: true # Zero-width, RTL override
+  # Seguridad automática habilitada por defecto (según security_level):
+  # - SQL, NoSQL, Command Injection
+  # - XSS Patterns
+  # - Suspicious Characters
 ```
 
 **Anti-Patrones Detectados:**
@@ -166,9 +167,9 @@ full_name:
 |------|-------------|------------|
 | `integer` | Número entero | Rango, outliers |
 | `numeric` | Decimal | Rango, precisión |
-| `percentage` | 0-100 | Aplicación de rango |
-| `latitude` | -90 a 90 | Límites geográficos |
-| `longitude` | -180 a 180 | Límites geográficos |
+| `percentage` | Porcentaje (0-100) | Rango estricto |
+| `probability` | 0.0 - 1.0 | Rango estricto |
+| `amount` | Moneda | Precisión 2 decimales |
 
 **Ejemplo:**
 ```yaml
@@ -458,9 +459,8 @@ cross_field:
 
 ```yaml
 business_rules:
-  - type: min_records
-    min: 1000
-    severity: warning
+  - type: minimum_records
+    min_count: 1000
 ```
 
 ### Distribución por Categoría
@@ -470,104 +470,69 @@ business_rules:
   - type: percentage_in_category
     column: status
     category: "active"
-    min_percentage: 70
-    max_percentage: 95
+    percentage: 0.70  # Espera ~70% de registros en esta categoría
 ```
 
-### Secuencias Monotónicas
+### Rangos Condicionales
 
 ```yaml
 business_rules:
-  - type: monotonic
-    column: order_id
-    direction: increasing
-    strict: true  # Sin duplicados
+  - type: value_range_by_condition
+    column: amount
+    condition: "payment_method == 'crypto'"
+    min_value: 50
+    max_value: 100000
+```
+
+### Tendencia Monotónica
+
+```yaml
+business_rules:
+  - type: trend_monotonic
+    column: transaction_id
+    direction: increasing   # increasing | decreasing
+    allow_equal: true
 ```
 
 ## Ejemplo de Configuración
 
 ```yaml
 validation:
-  great_expectations:
-    - dataset: "customers"
-      suites:
-        - name: "01_Schema_Validation"
-          expectations:
-            - expectation_type: "expect_table_columns_to_match_set"
-              column_set: ["id", "name", "email", "phone", "status"]
+  schema:
+    raw_customers:
+      security_level: strict
+      quality_threshold: 0.95
+      
+      columns:
+        customer_id:
+          type: uuid
+          required: true
+          unique: true
         
-        - name: "02_Data_Types"
-          expectations:
-            - expectation_type: "expect_column_values_to_be_of_type"
-              column: "id"
-              type_: "uuid"
-            
-            - expectation_type: "expect_column_values_to_match_regex"
-              column: "email"
-              regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        email:
+          type: email
+          required: true
+          unique: true
         
-        - name: "03_Data_Quality"
-          expectations:
-            - expectation_type: "expect_column_values_to_not_be_null"
-              column: "name"
-            
-            - expectation_type: "expect_column_values_to_be_unique"
-              column: "email"
-        
-        - name: "04_Security_OWASP"
-          expectations:
-            - expectation_type: "expect_column_values_to_not_match_regex"
-              column: "name"
-              regex: "(?i)(\\bOR\\b.*=.*|;.*DROP|<script|javascript:)"
-              severity: "critical"
-        
-        - name: "05_Compliance_GDPR"
-          expectations:
-            - expectation_type: "expect_column_values_to_be_encrypted"
-              column: "ssn"
-              severity: "critical"
+        age:
+          type: integer
+          min: 18
+          max: 100
+      
+      business_rules:
+        - type: percentage_in_category
+          column: account_status
+          category: "active"
+          percentage: 0.85
 ```
-
-## Consideraciones de Rendimiento
-
-**Estrategias de Optimización:**
-
-1. **Muestreo:** Usar muestras representativas para validación estadística
-   ```yaml
-   sample_size: 10000  # Validar 10k registros en lugar de millones
-   ```
-
-2. **Paralelización:** Ejecutar suites independientes concurrentemente
-   ```yaml
-   parallel: true
-   max_workers: 4
-   ```
-
-3. **Caching:** Cachear resultados de validación para datos idénticos
-   ```yaml
-   cache_enabled: true
-   cache_ttl: 3600  # 1 hora
-   ```
-
-4. **Validación Selectiva:** Omitir validaciones pasadas en datos sin cambios
-   ```yaml
-   incremental: true
-   checkpoint_key: "data_hash"
-   ```
-
-**Rendimiento Típico:**
-- Verificaciones simples de formato: 100k registros/seg
-- Coincidencia de regex: 50k registros/seg
-- Outliers estadísticos: 10k registros/seg
-- Validación cross-field: 5k registros/seg
 
 ## Niveles de Severidad
 
 | Level | Description | Action |
 |-------|-------------|--------|
-| `critical` | Vulnerabilidad de seguridad o violación de cumplimiento | Fallar pipeline inmediatamente |
-| `error` | Problema de calidad de datos que afecta la lógica de negocio | Fallar pipeline |
-| `warning` | Problema menor de calidad | Registrar y continuar |
+| `critical` | Vulnerabilidad de seguridad o violación de cumplimiento | Registrar incidencia crítica y afectar Score |
+| `error` | Problema de calidad de datos que afecta la lógica de negocio | Afectar Score de Calidad |
+| `warning` | Problema menor de calidad | Registrar advertencia |
 | `info` | Solo informativo | Solo registrar |
 
 ## Reportes de Validación

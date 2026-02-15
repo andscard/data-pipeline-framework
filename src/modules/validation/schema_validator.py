@@ -1,94 +1,36 @@
-"""
-Advanced Schema Validator - Production-Ready Validation System
-
-Sistema completo de validación que cubre:
-1. CALIDAD DE DATOS: Completitud, Unicidad, Consistencia, Exactitud
-2. SEGURIDAD AUTOMÁTICA: OWASP Top 10+, Data Leakage, Injection Attacks  
-3. INTEGRIDAD: Cross-field validation, Business rules
-4. CONFORMIDAD: Formatos estándar, Regulaciones (GDPR, PCI-DSS)
-
-Arquitectura:
-- 40+ tipos de datos semánticos
-- **SEGURIDAD AUTOMÁTICA GLOBAL**: El análisis se aplica a TODAS las columnas
-  según su tipo y el security_level global (strict/standard/relaxed)
-- Validaciones compuestas (cross-field)
-- Niveles de severidad (critical, error, warning, info)
-- Extensible y configurable para cualquier estructura de datos
-
-IMPORTANTE - Seguridad Automática:
-==============================
-El análisis de seguridad NO se configura por columna (opt-in).
-En su lugar, se aplica AUTOMÁTICAMENTE a todas las columnas según:
-  1. El tipo de columna (text, web, pii, etc.)
-  2. El security_level global (strict/standard/relaxed)
-  
-Ejemplo:
-  schema:
-    dataset:
-      security_level: strict  # Aplica 30+ checks a TODAS las columnas
-      columns:
-        user_comment:
-          type: text
-          # AUTOMÁTICO: SQL injection, XSS, Command injection, Data leakage
-        
-        email:
-          type: email  
-          # AUTOMÁTICO: XSS, Data leakage adaptado a emails
-        
-        website:
-          type: url
-          # AUTOMÁTICO: XSS, SSRF, Command injection
-
-Para desactivar (raro):
-  column_name:
-    type: text
-    skip_security: true  # Omite TODOS los checks
-    # O específicamente:
-    skip_security_checks: ['sql_injection', 'xss_basic']
-"""
-
 from typing import Dict, List, Any, Optional, Tuple
 from enum import Enum
 import re
 
 
 class ValidationSeverity(Enum):
-    """Niveles de severidad para validaciones"""
-    CRITICAL = "critical"  # Bloquea pipeline
-    ERROR = "error"        # Debe corregirse
-    WARNING = "warning"    # Revisar
-    INFO = "info"          # Informativo
+    CRITICAL = "critical"
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
 
 
 class ValidationCategory(Enum):
-    """Categorías de validación"""
-    STRUCTURE = "estructura"           # Tabla/columnas
-    DATA_QUALITY = "calidad_datos"     # Completitud, exactitud
-    DATA_TYPE = "tipos_formato"        # Tipos y formatos
-    BUSINESS_RULES = "reglas_negocio"  # Lógica de negocio
-    SECURITY = "seguridad"             # Vulnerabilidades
-    INTEGRITY = "integridad"           # Consistencia cross-field
-    COMPLIANCE = "cumplimiento"        # Regulaciones
+    STRUCTURE = "estructura"
+    DATA_QUALITY = "calidad_datos"
+    DATA_TYPE = "tipos_formato"
+    BUSINESS_RULES = "reglas_negocio"
+    SECURITY = "seguridad"
+    INTEGRITY = "integridad"
+    COMPLIANCE = "cumplimiento"
 
 
 class DataTypeRegistry:
-    """Registro centralizado de tipos de datos con sus validaciones"""
     
-    # ============================================================================
-    # PATRONES REGEX - IDENTIFICADORES Y FORMATOS
-    # ============================================================================
     PATTERNS = {
-        # Identificadores únicos
         'uuid': r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
         'uuid_any': r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
         
-        # Contacto
         'email': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
         'phone_es': r'^\+34[6-9]\d{8}$',
         'phone_intl': r'^\+?[\d\s\-\(\)]{8,20}$',
         'phone_us': r'^\+?1?\s*\(?[2-9]\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{4}$',
         
-        # URLs y redes
         'url': r'^https?://[^\s/$.?#].[^\s]*$',
         'url_secure': r'^https://[^\s/$.?#].[^\s]*$',
         'domain': r'^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$',
@@ -96,93 +38,67 @@ class DataTypeRegistry:
         'ipv6': r'^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::)$',
         'mac_address': r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$',
         
-        # Identificación personal
         'ssn_us': r'^\d{3}-\d{2}-\d{4}$',
         'dni_es': r'^\d{8}[A-Z]$',
         'nie_es': r'^[XYZ]\d{7}[A-Z]$',
         'passport': r'^[A-Z]{1,3}\d{6,9}$',
         
-        # Financiero
         'credit_card': r'^(?:\d{4}[\s-]?){3}\d{4}$',
         'iban': r'^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$',
         'swift_bic': r'^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$',
         'currency_code': r'^[A-Z]{3}$',
         
-        # Códigos postales
         'postal_code_es': r'^\d{5}$',
         'postal_code_us': r'^\d{5}(-\d{4})?$',
         'postal_code_uk': r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$',
         
-        # Texto formateado
         'alphanumeric': r'^[a-zA-Z0-9]+$',
         'alpha_only': r'^[a-zA-Z]+$',
         'numeric_only': r'^\d+$',
         'slug': r'^[a-z0-9]+(?:-[a-z0-9]+)*$',
         'hex_color': r'^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$',
         
-        # Versiones y códigos estándar
         'semver': r'^\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+)?$',
         'iso_date': r'^\d{4}-\d{2}-\d{2}$',
-        'iso_datetime': r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$',
+        'iso_datetime': r'^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$',
         'country_code': r'^[A-Z]{2}$',
         'language_code': r'^[a-z]{2}(-[A-Z]{2})?$',
         
-        # ============================================================================
-        # PATRONES REGEX - SEGURIDAD COMPLETA (OWASP Top 10 + Extended)
-        # ============================================================================
-        
-        # A03:2021 - Injection - SQL
-        'sql_injection': r"(?i)(?:'|--|;|\/\*|\*\/|union\s+select|insert\s+into|delete\s+from|drop\s+table|update\s+.+set|exec\s*\(|execute\s*\(|xp_cmdshell|sp_executesql)",
+        'sql_injection': r"(?i)(?:--|;|\/\*|\*\/|union\s+select|insert\s+into|delete\s+from|drop\s+table|update\s+.+set|exec\s*\(|execute\s*\(|xp_cmdshell|sp_executesql)",
         'sql_injection_advanced': r"(?i)(?:or\s+1\s*=\s*1|and\s+1\s*=\s*1|having\s+1\s*=\s*1|waitfor\s+delay|benchmark\s*\(|sleep\s*\(|pg_sleep)",
         
-        # A03:2021 - Injection - NoSQL
         'nosql_injection': r"(?:\$ne|\$gt|\$lt|\$gte|\$lte|\$in|\$nin|\$where|\$regex|\$options|\$expr|\$jsonSchema)",
         
-        # A03:2021 - Injection - LDAP
-        'ldap_injection': r"(?:\*|\(|\)|&|\||!|=|~=|>=|<=|\x00)",
+        'ldap_injection': r"(?:\*|!|~=|>=|<=|\x00)",
         
-        # A03:2021 - Injection - XPath
-        'xpath_injection': r"(?:'|\"|\[|\]|\/\/|\.\.|@|\|)",
+        'xpath_injection': r"(?:\"\]|\[\"|\.\.)",
         
-        # A03:2021 - Injection - Command  
-        'command_injection': r"(?:;|\||&&|\n|\r|`|\$\(|>\s*\/|<\s*\/|wget\s|curl\s|nc\s|bash\s|sh\s|cmd\s|powershell\s|eval\s|exec\s)",
+        'command_injection': r"(?:;|&&|\n|\r|`|\$\(|>\s*\/|<\s*\/|\bwget\s+|\bcurl\s+|\bnc\s+|\bbash\s+|\bsh\s+|\bcmd\s+|\bpowershell\s+|\beval\s+|\bexec\s+)",
         
-        # A03:2021 - Injection - YAML
         'yaml_injection': r"(?:!!python/|!!map|!!omap|!!pairs|__import__|eval\(|exec\()",
         
-        # A03:2021 - Injection - Template (SSTI)
         'template_injection': r"(?:\{\{|\}\}|\{%|%\}|\$\{|<%|%>|#\{)",
         
-        # A03:2021 - Injection - CSV
-        'csv_injection': r"^[=+\-@]",
+        'csv_injection': r"^[=@]|^[+\-](?!\d)",
         
-        # A03:2021 - Injection - CRLF
         'crlf_injection': r"(?:%0d|%0a|\\r|\\n|\r\n)",
         
-        # A03:2021 - XSS (Cross-Site Scripting) - Básico
-        'xss_basic': r"(?i)(?:<script[^>]*>|<\/script>|javascript:|onerror\s*=|onload\s*=|<iframe|<object|<embed)",
+        'xss_basic': r"(?i)(?:<script[^>]*>|<\/script>|javascript:|onerror\s*=|onload\s*=|(?:\s+on[a-z]+\s*=)|<iframe|<object|<embed)",
         
-        # A03:2021 - XSS - Avanzado
         'xss_advanced': r"(?i)(?:<img[^>]+src|<svg[^>]*>|<math[^>]*>|<video[^>]*>|<audio[^>]*>|<link[^>]+href|vbscript:|livescript:|mocha:|data:text/html)",
         
-        # A03:2021 - XSS - Event Handlers
         'xss_event_handlers': r"(?i)on(?:abort|blur|change|click|dblclick|error|focus|keydown|keypress|keyup|load|mousedown|mousemove|mouseout|mouseover|mouseup|reset|resize|select|submit|unload)\s*=",
         
-        # A04:2021 - Insecure Design - Path Traversal
         'path_traversal': r"(?:\.\.\/|\.\.\\|%2e%2e%2f|%2e%2e%5c|..%2f|..%5c|\.\.%252f)",
         'path_traversal_win': r"(?:[C-Z]:\\|\\\\)",
         'null_byte': r"(?:%00|\x00)",
         
-        # A05:2021 - XXE (XML External Entity)
         'xxe_injection': r"(?:<!ENTITY|<!DOCTYPE|SYSTEM\s+['\"]|PUBLIC\s+['\"])",
         
-        # A10:2021 - SSRF (Server-Side Request Forgery)
         'ssrf_patterns': r"(?:localhost|127\.0\.0\.|0\.0\.0\.0|169\.254\.|metadata|internal)",
         
-        # A01:2021 - Broken Access Control
-        'privilege_escalation': r"(?i)(?:admin|root|sudo|system|administrator|superuser|sa\b)",
-        
-        # A02:2021 - Cryptographic Failures - API Keys
+        'privilege_escalation': r"(?i)(?:\bsudo\b|\bsuperuser\b)",
+
         'api_key_generic': r"(?i)(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token)\s*[:=]\s*['\"]?[a-zA-Z0-9_-]{20,}['\"]?",
         'aws_access_key': r"(?:AKIA|ASIA)[0-9A-Z]{16}",
         'aws_secret_key': r"(?i)aws.{0,20}?['\"][0-9a-zA-Z/+=]{40}['\"]",
@@ -190,89 +106,59 @@ class DataTypeRegistry:
         'slack_token': r"xox[pboa]-[0-9]{12}-[0-9]{12}-[0-9a-zA-Z]{24,32}",
         'google_api_key': r"AIza[0-9A-Za-z\\-_]{35}",
         
-        # A02:2021 - Cryptographic Failures - Private Keys
         'private_key': r"(?:-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----)",
         'ssh_key': r"(?:ssh-rsa |ssh-dss |ecdsa-sha2-nistp256 )AAAA[0-9A-Za-z+/]+",
         
-        # A02:2021 - Cryptographic Failures - Tokens
         'jwt_token': r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+",
         'bearer_token': r"(?i)bearer\s+[a-zA-Z0-9_\\-\\.=]+",
         
-        # A02:2021 - Cryptographic Failures - Passwords
         'password_pattern': r"(?i)(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?",
         'connection_string': r"(?i)(?:server|host|database|uid|pwd|password)\s*=",
         
-        # A02:2021 - Cryptographic Failures - Sensitive Data (PII)
         'ssn_pattern': r"\b\d{3}-\d{2}-\d{4}\b",
         'credit_card_pattern': r"\b(?:\d{4}[\s-]?){3}\d{4}\b",
         
-        # A07:2021 - Authentication Failures
         'weak_password': r"^(?:123456|password|qwerty|admin|letmein|welcome|monkey|dragon|master|sunshine)$",
         
-        # A08:2021 - Software Integrity Failures
         'serialization_gadget': r"(?:__reduce__|__setstate__|pickle|marshal|yaml\.load|eval\(|exec\()",
         'deserialization_attack': r"(?:java\.lang\.Runtime|ProcessBuilder|ObjectInputStream)",
         
-        # A09:2021 - Security Logging Failures
         'log_injection': r"(?:\n|\r|%0d|%0a|%0D|%0A)",
         
-        # Extended - HTTP Header Injection
         'http_header_injection': r"(?:\r\n|\n|%0d|%0a)(?:Content-Type|Set-Cookie|Location):",
         
-        # Extended - Email Header Injection
         'email_header_injection': r"(?:\r\n|\n|%0d|%0a)(?:To:|From:|Cc:|Bcc:|Subject:)",
         
-        # Extended - File Inclusion
         'file_inclusion': r"(?:file://|php://|zip://|data://|expect://|input://)",
         
-        # ============================================================================
-        # PATRONES - CALIDAD DE DATOS
-        # ============================================================================
-        
-        # Valores de prueba/dummy
         'test_email': r"(?i)(?:test|dummy|fake|sample|example|temp|noreply)@|@(?:test|example|dummy|localhost|invalid)\.",
         'dummy_phone': r"^(?:000|111|222|333|444|555|666|777|888|999)",
         'dummy_name': r"(?i)^(?:test|dummy|fake|sample|example|lorem|ipsum|null|n/a|na|xxx|undefined)$",
         
-        # Datos incompletos
         'placeholder_text': r"(?i)(?:lorem ipsum|dolor sit|to\s+be\s+defined|tbd|pending|unknown|n/a|\?\?\?|xxx+|todo)",
         'spaces_only': r'^\s+$',
         'special_chars_overload': r'[!@#$%^&*()]{5,}',
         
-        # Caracteres sospechosos
-        'invisible_chars': r"[\u200B-\u200D\uFEFF]",  # Zero-width characters
-        'rtl_override': r"[\u202E]",  # Right-to-left override
+        'invisible_chars': r"[\u200B-\u200D\uFEFF]",
+        'rtl_override': r"[\u202E]",
         
-        # ============================================================================
-        # PATRONES - COMPLIANCE (Regulaciones)
-        # ============================================================================
-        
-        # GDPR - PII Detection Combinado
         'gdpr_pii_combined': r"(?:\d{3}-\d{2}-\d{4}|\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})",
         
-        # PCI-DSS - Credit Card Detection (Primary Account Number)
         'pci_pan': r"\b(?:\d{4}[\s-]?){3}\d{4}\b",
         'pci_track_data': r"%[A-Z]?\d{13,19}\^",
         'pci_cvv': r"\b\d{3,4}\b",
         
-        # HIPAA - Medical Record Numbers
         'hipaa_mrn': r"(?i)(?:mrn|medical\s+record)\s*[:=]?\s*\d{6,}",
         
-        # SOC2 - Debug Information Leakage
         'debug_stack_trace': r"(?i)(?:stack\s+trace|exception|error\s+at\s+line|warning:|notice:|debug:|traceback)",
         'internal_path': r"(?:[C-Z]:\\|\/home\/|\/usr\/|\/var\/|\/etc\/)",
     }
     
-    # ============================================================================
-    # DEFINICIONES DE TIPOS
-    # ============================================================================
-    
     TYPE_DEFINITIONS = {
-        # ========== IDENTIFICADORES ==========
         'uuid': {
             'category': 'identifier',
             'patterns': ['uuid'],
-            'description': 'UUID v4válido',
+            'description': 'UUID v4',
             'default_required': True,
             'default_unique': True
         },
@@ -283,7 +169,6 @@ class DataTypeRegistry:
             'type_check': 'integer'
         },
         
-        # ========== CONTACTO ==========
         'email': {
             'category': 'contact',
             'patterns': ['email'],
@@ -1157,6 +1042,7 @@ class SchemaValidator:
                 'expectation_type': 'expect_column_values_to_be_between',
                 'column': column,
                 'row_condition': condition,
+                'condition_parser': 'pandas',
                 '_category': ValidationCategory.BUSINESS_RULES.value
             }
             if min_val is not None:

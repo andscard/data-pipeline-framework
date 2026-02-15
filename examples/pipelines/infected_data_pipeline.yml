@@ -80,7 +80,7 @@ validation:
     # ========================================================================
     raw_customers:
       security_level: strict
-      quality_threshold: 0.95
+      quality_threshold: 0.80
       
       columns:
         # ---- IDENTIFICADORES ----
@@ -179,17 +179,28 @@ validation:
       
       # ---- REGLAS DE NEGOCIO ----
       business_rules:
+        # Regla 1: Porcentaje mínimo de clientes activos
         - type: percentage_in_category
           column: account_status
           category: "active"
-          percentage: 0.70
-    
+          percentage: 0.85
+        
+        # Regla 2: LTV debe ser consistente con la edad (mayores de 25 deben tener LTV > 100)
+        - type: value_range_by_condition
+          column: lifetime_value
+          condition: "age > 25"
+          min_value: 100
+        
+        # Regla 3: Mínimo total de registros
+        - type: minimum_records
+          min_count: 1000
+
     # ========================================================================
     # DATASET: TRANSACTIONS
     # ========================================================================
     raw_transactions:
       security_level: strict
-      quality_threshold: 0.98
+      quality_threshold: 0.80
       
       columns:
         # ---- IDENTIFICADORES ----
@@ -249,10 +260,21 @@ validation:
       
       # ---- REGLAS DE NEGOCIO ----
       business_rules:
+        # Regla 1: Tasa de éxito de transacciones
         - type: percentage_in_category
           column: status
           category: "completed"
           percentage: 0.80
+          
+        # Regla 2: Transacciones Crypto deben ser de alto valor (> 50)
+        - type: value_range_by_condition
+          column: amount
+          condition: "payment_method == 'crypto'"
+          min_value: 50
+        
+        # Regla 3: Volumen mínimo de transacciones
+        - type: minimum_records
+          min_count: 5000
 
 # ============================================================================
 # STAGE 3: TRANSFORMATION

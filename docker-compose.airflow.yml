@@ -47,6 +47,7 @@ services:
       - ./:/opt/airflow/framework  # Framework completo disponible
       - ./data:/opt/airflow/framework/data  # Datos
       - ./examples:/opt/airflow/framework/examples  # Configs de pipelines
+      - ./reports:/opt/airflow/framework/reports  # Reportes generados
     user: "${AIRFLOW_UID}:0"
     entrypoint: /bin/bash
     command:
@@ -97,6 +98,7 @@ services:
       - ./:/opt/airflow/framework
       - ./data:/opt/airflow/framework/data
       - ./examples:/opt/airflow/framework/examples
+      - ./reports:/opt/airflow/framework/reports
     user: "${AIRFLOW_UID}:0"
     command: bash -c "
       echo '📦 Instalando dependencias del framework...' &&
@@ -134,6 +136,7 @@ services:
       - ./:/opt/airflow/framework
       - ./data:/opt/airflow/framework/data
       - ./examples:/opt/airflow/framework/examples
+      - ./reports:/opt/airflow/framework/reports
     user: "${AIRFLOW_UID}:0"
     ports:
       - "8080:8080"

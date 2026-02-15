@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 from .validation_formatter import ValidationFormatter
 
+from src.config import Config
+
 class HTMLReportGenerator:
     """Generador de reportes HTML con diseño profesional empresarial"""
     
@@ -36,9 +38,16 @@ class HTMLReportGenerator:
         """
         if not output_path:
             execution_id = monitoring_summary.get('execution_id', 'unknown')
+            pipeline_name = monitoring_summary.get('pipeline_name', 'pipeline')
+            # Sanitizar nombre del pipeline para archivos
+            safe_pipeline_name = re.sub(r'[^a-zA-Z0-9_-]', '_', pipeline_name)
+            
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            prefix = "validation" if report_type == "technical" else "execution"
-            output_path = Path(f"reports/{prefix}_{execution_id[:8]}_{timestamp}.html")
+            stage_suffix = "validation" if report_type == "technical" else "execution"
+            
+            # Formato solicitado: <NombrePipeline>_<fecha en formato YYYYmmDD_HHMMSS>_<stage>.html
+            filename = f"{safe_pipeline_name}_{timestamp}_{stage_suffix}.html"
+            output_path = Config.REPORTS_DIR / filename
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -51,15 +60,12 @@ class HTMLReportGenerator:
         return output_path
     
     def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]], include_stages: bool = True, report_type: str = "technical") -> str:
-        """Construir HTML completo"""
         execution_id = monitoring.get('execution_id', 'N/A')[:8]
         pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
         start_time = monitoring.get('start_time', 'N/A')
         
-        # Título según tipo de reporte
         report_title = "Data Quality Validation Report" if report_type == "technical" else "Data Pipeline Execution Report"
         
-        # Extraer métricas
         health_status = monitoring.get('health_status', 'unknown')
         duration = monitoring.get('total_duration', 0)
         records = monitoring.get('total_records_processed', 0)
@@ -70,26 +76,23 @@ class HTMLReportGenerator:
         validations_passed = validation_stage.get('validations_passed', 0)
         validations_failed = validation_stage.get('validations_failed', 0)
         
-        # Status badge
         status_badge = self._get_status_badge(health_status, quality_score)
         
-        # Validation results
         validation_results = []
         if audit and 'validation_results' in audit:
             validation_results = audit['validation_results']
         
-        # Usar validation_summary (siempre disponible y correcto)
         validation_summary = audit.get('validation_summary', []) if audit else []
+        quality_thresholds = audit.get('quality_thresholds', {}) if audit else {}
+
         suites_summary = self._group_by_suite_from_summary(validation_summary)
+        
+        dataset_scorecard_html = self._render_dataset_quality_summary(suites_summary, quality_thresholds)
+        
         suites_html = self._render_suites(suites_summary)
         
-        # Tabla de fallos agregada por suite (datos completos)
-        # failures_html = self._render_failures_summary(suites_summary) # REMOVED per user request
-        
-        # Detalle completo de todos los fallos individuales
         detailed_failures_html = self._render_detailed_failures(validation_results)
         
-        # Stage summary (solo si include_stages=True)
         stages_section = ""
         if include_stages:
             stages_html = self._render_stages(stages)
@@ -170,7 +173,12 @@ class HTMLReportGenerator:
                 </div>
             </div>
             
+            {dataset_scorecard_html}
+
+            <h3 style="margin-top: 30px; margin-bottom: 20px;">Suite Detailed Breakdown</h3>
             {suites_html}
+            
+            <h3 style="margin-top: 40px; margin-bottom: 20px;">Failure Details</h3>
             {detailed_failures_html}
         </section>
         
@@ -528,6 +536,15 @@ class HTMLReportGenerator:
     
     def _get_status_badge(self, status: str, quality: float) -> str:
         """Generar badge de status"""
+        status_lower = str(status).lower()
+        
+        # Prioridad al status explícito del pipeline
+        if status_lower in ['failed', 'error', 'critical', 'unhealthy']:
+            return '<span class="status-badge status-critical">CRITICAL</span>'
+        elif status_lower in ['warning', 'degraded']:
+            return '<span class="status-badge status-warning">WARNING</span>'
+            
+        # Fallback basado en quality score
         if quality < 50:
             return '<span class="status-badge status-critical">CRITICAL</span>'
         elif quality < 80:
@@ -577,24 +594,90 @@ class HTMLReportGenerator:
         
         return suites
     
+    def _render_dataset_quality_summary(self, suites: dict, thresholds: dict) -> str:
+        if not suites or not thresholds:
+            return ""
+            
+        dataset_stats = {}
+        for _, data in suites.items():
+            ds = data.get('dataset')
+            if not ds: continue
+            
+            if ds not in dataset_stats:
+                dataset_stats[ds] = {'passed': 0, 'failed': 0, 'total': 0}
+            
+            dataset_stats[ds]['passed'] += data['passed']
+            dataset_stats[ds]['failed'] += data['failed']
+            dataset_stats[ds]['total'] += data['total']
+            
+        if not dataset_stats:
+            return ""
+
+        rows = []
+        for ds, stats in dataset_stats.items():
+            if ds not in thresholds: continue
+            
+            total = stats['total']
+            score = (stats['passed'] / total * 100) if total > 0 else 0
+            target = thresholds[ds] * 100
+            
+            is_critical = score < target
+            status_label = "CRITICAL" if is_critical else "HEALTHY"
+            status_class = "status-critical" if is_critical else "status-healthy"
+            score_color = "#dc3545" if is_critical else "#28a745"
+            
+            rows.append(f"""
+            <tr>
+                <td style="font-weight:600;">{ds}</td>
+                <td style="text-align:center;">{stats['passed']}</td>
+                <td style="text-align:center;">{stats['failed']}</td>
+                <td style="text-align:center;">{stats['total']}</td>
+                <td style="text-align:center;">
+                    <span style="color:{score_color}; font-weight:bold;">{score:.1f}%</span>
+                </td>
+                <td style="text-align:center; color:#6c757d;">{target:.1f}%</td>
+                <td style="text-align:center;">
+                    <span class="status-badge {status_class}">{status_label}</span>
+                </td>
+            </tr>
+            """)
+            
+        if not rows:
+            return ""
+            
+        return f"""
+        <div style="margin-bottom: 30px;">
+            <h3>Dataset Quality Scorecards</h3>
+            <table class="suites-table">
+                <thead>
+                    <tr>
+                        <th>Dataset</th>
+                        <th style="text-align:center;">Passed</th>
+                        <th style="text-align:center;">Failed</th>
+                        <th style="text-align:center;">Total Checks</th>
+                        <th style="text-align:center;">Actual Score</th>
+                        <th style="text-align:center;">Target Score</th>
+                        <th style="text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(rows)}
+                </tbody>
+            </table>
+        </div>
+        """
+
     def _render_suites(self, suites: dict) -> str:
-        """Renderizar tabla de suites ordenada alfabéticamente"""
         if not suites:
             return ""
         
-        # Ordenar suites alfabéticamente por nombre
         sorted_suites = sorted(suites.items(), key=lambda x: x[0])
         
         rows = []
         for suite_name, data in sorted_suites:
             success_rate = (data['passed'] / data['total'] * 100) if data['total'] > 0 else 0
-            # Solo usar warning o error si realmente hubo fallos
-            if data['failed'] > 0:
-                 status = '✗'
-                 status_color = '#dc3545'
-            else:
-                 status = '✓'
-                 status_color = '#28a745'
+            
+            status_color = '#dc3545' if data['failed'] > 0 else '#28a745'
             
             rows.append(f"""
             <tr>
@@ -730,65 +813,59 @@ class HTMLReportGenerator:
             group_id_counter += 1
             group_id = f"group_{group_id_counter}"
             
-            count = len(failures)
+            # Pre-calcular total de items de detalle para el badge
+            detail_row_count = 0
+            temp_detail_rows = []
             
-            # Fila Principal (Encabezado del Grupo)
-            table_rows.append(f"""
-            <tr class="group-header" onclick="toggleGroup('{group_id}')" style="background: #e9ecef; cursor: pointer; border-bottom: 2px solid #dee2e6;">
-                <td colspan="5" style="padding: 12px 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <span style="font-size: 1.1em; font-weight: bold; color: #343a40;">{suite_name}</span>
-                            <span style="margin-left: 10px; font-size: 0.9em; color: #6c757d; font-family: monospace;">{dataset_name}</span>
-                        </div>
-                        <div>
-                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">{count} fallos</span>
-                            <span style="margin-left: 10px; font-size: 0.8em; color: #6c757d;">▼</span>
-                        </div>
-                    </div>
-                </td>
-            </tr>
-            """)
-            
-            # Encabezado de la tabla interna (solo aparece una vez por grupo)
-            table_rows.append(f"""
-            <tr class="detail-row {group_id}" style="display: none; background: #f8f9fa;">
-               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;"></th>
-               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Columna</th>
-               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Detalle del Error</th>
-               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:center;">Severidad</th>
-               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:right;">Registros</th>
-            </tr>
-            """)
-            
-            # Filas de Detalle (Ocultas por defecto)
-            detail_rows = []
             for item in failures:
-                # ... (resto de lógica igual) ...
+                # Datos básicos y fallback para expectation_type
                 exp_type = item.get('expectation_type', 'N/A')
                 failure_details = item.get('failure_details', [])
                 if not failure_details: failure_details = [{}]
                 if isinstance(failure_details, dict): failure_details = [failure_details]
                 
                 for detail in failure_details:
+                    # Increment count for each DETAIL row generated
+                    detail_row_count += 1
+                    
                     kwargs = detail.get('kwargs', {})
                     if not kwargs and 'rule_name' in item: kwargs['expectation_type'] = item['rule_name']
                     
                     column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
                     if not column or column == 'N/A': column = "Tabla Completa"
                     
-                    # Descripción legible usando el Formatter Modular (Se pasa todo el objeto 'detail')
-                    description = ValidationFormatter.get_description(exp_type, detail)
+                    # CORRECCION: Obtener expectation_type real del detalle, no del registro padre (que es un resumen)
+                    real_exp_type = detail.get('expectation_type', exp_type)
                     
-                    # Métricas específicas (Priorizar datos del resultado directo)
-                    result_info = detail.get('result', {})
-                    unexpected_count = result_info.get('unexpected_count', detail.get('unexpected_count', item.get('failed_count', 0)))
-                    element_count = result_info.get('element_count', detail.get('element_count', item.get('total_records', 0)))
+                    # Descripción legible usando el Formatter Modular
+                    description = ValidationFormatter.get_description(real_exp_type, detail)
                     
-                    if element_count and element_count > 0:
-                        affected_display = f"{unexpected_count:,} / {element_count:,}"
+                    # Métricas específicas (Priorizar datos directos del detalle)
+                    result_info = detail.get('result', detail) 
+                    
+                    unexpected_count = result_info.get('unexpected_count', detail.get('unexpected_count'))
+                    element_count = result_info.get('element_count', detail.get('element_count'))
+                    observed_value = result_info.get('observed_value', detail.get('observed_value'))
+                    partial_list = result_info.get('partial_unexpected_list', detail.get('partial_unexpected_list', []))
+
+                    if unexpected_count is not None:
+                        # Caso estándar: Conteo de fallos disponible
+                        if element_count and element_count > 0:
+                            affected_display = f"{self._format_number(unexpected_count)} / {self._format_number(element_count)}"
+                        else:
+                            affected_display = self._format_number(unexpected_count)
+                    elif partial_list:
+                        # Fallback: Si no hay conteo total pero sí ejemplos, mostramos cantidad de ejemplos +
+                        affected_display = f"Min. {len(partial_list)}"
+                    elif observed_value is not None:
+                        # Caso especial: Validaciones a nivel tabla (row_count) o agregaciones
+                        # donde observed_value es la métrica relevante
+                        if 'expect_table_' in real_exp_type or 'expect_column_mean' in real_exp_type:
+                             affected_display = f"Valor: {observed_value}"
+                        else:
+                             affected_display = "N/A"
                     else:
-                        affected_display = str(unexpected_count) # Fallback si no hay total
+                        affected_display = "Ver detalle"
                     
                      # Formatear columna para display
                     if isinstance(column, list):
@@ -800,7 +877,8 @@ class HTMLReportGenerator:
                     severity_color = '#dc3545' if severity == 'critical' else '#fd7e14' if severity == 'error' else '#ffc107'
                     severity_label = severity.upper()
 
-                    detail_rows.append(f"""
+                    # Save row HTML to list
+                    temp_detail_rows.append(f"""
                     <tr class="detail-row {group_id}" style="display: none; background: white; border-bottom: 1px solid #f1f2f3;">
                         <td style="width: 20px; border-left: 4px solid {severity_color};"></td>
                         <td style="padding: 10px 15px; width: 20%;">
@@ -814,7 +892,37 @@ class HTMLReportGenerator:
                     </tr>
                     """)
             
-            table_rows.extend(detail_rows)
+            # Fila Principal (Encabezado del Grupo) con conteo REAL
+            table_rows.append(f"""
+            <tr class="group-header" onclick="toggleGroup('{group_id}')" style="background: #e9ecef; cursor: pointer; border-bottom: 2px solid #dee2e6;">
+                <td colspan="5" style="padding: 12px 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 1.1em; font-weight: bold; color: #343a40;">{suite_name}</span>
+                            <span style="margin-left: 10px; font-size: 0.9em; color: #6c757d; font-family: monospace;">{dataset_name}</span>
+                        </div>
+                        <div>
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">{detail_row_count} fallos</span>
+                            <span style="margin-left: 10px; font-size: 0.8em; color: #6c757d;">▼</span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            """)
+
+            # Encabezado de la tabla interna (solo aparece una vez por grupo)
+            table_rows.append(f"""
+            <tr class="detail-row {group_id}" style="display: none; background: #f8f9fa;">
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;"></th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Columna</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Detalle del Error</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:center;">Severidad</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:right;">Registros</th>
+            </tr>
+            """)
+            
+            # Agregar filas de detalle pre-generadas
+            table_rows.extend(temp_detail_rows)
 
         return f"""
         <div style="margin-top: 40px;">
