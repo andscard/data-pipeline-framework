@@ -268,9 +268,7 @@ def execute_export_logs_for_pipeline(pipeline_name: str):
         
         if pipeline_name in available_pipelines:
             # Exportar logs filtrando por execution_id si es posible, o todo el pipeline
-            # Nota: LogExporter.export_all exporta todo el histórico. 
-            # Idealmente deberíamos exportar solo esta ejecución, pero mantenemos comportamiento original
-            exported_files = exporter.export_all(pipeline_name, output_dir)
+            exported_files = exporter.export_all(pipeline_name, output_dir, execution_id=execution_id)
             
             for file_type, file_path in exported_files.items():
                 logger.info(f"  - {Path(file_path).name}")
@@ -378,13 +376,13 @@ def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
     
     # 5. Export Logs
     export_logs = PythonOperator(
-        task_id='5_export_logs_unified',
+        task_id='5_export_logs',
         python_callable=execute_export_logs_for_pipeline,
         op_kwargs={
             'pipeline_name': pipeline_name,
         },
         dag=dag,
-        trigger_rule='all_done',  # Ejecutar aunque fallen etapas anteriores (best effort)
+        trigger_rule='all_done',
     )
     
     # ========================================================================

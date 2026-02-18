@@ -49,13 +49,14 @@ class LogExporter:
             self.connection.close()
             logger.info("Database connection closed")
     
-    def export_all(self, pipeline_name: str, output_dir: Path) -> Dict[str, str]:
+    def export_all(self, pipeline_name: str, output_dir: Path, execution_id: Optional[str] = None) -> Dict[str, str]:
         """
         Exportar todos los logs del pipeline a múltiples CSVs.
         
         Args:
             pipeline_name: Nombre del pipeline a exportar
             output_dir: Directorio donde guardar los CSVs
+            execution_id: (Opcional) Filtrar por UUID de ejecución específica
             
         Returns:
             Diccionario con rutas de archivos generados
@@ -67,6 +68,8 @@ class LogExporter:
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Timestamp para los archivos
+        # Si es una ejecución específica, usamos el timestamp actual para el nombre del archivo
+        # aunque el contenido sea filtrado
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_pipeline_name = pipeline_name.replace(" ", "_").replace("/", "_")
         
@@ -74,37 +77,37 @@ class LogExporter:
         
         # 1. Resumen de ejecuciones
         file_path = output_dir / f"{safe_pipeline_name}_executions_{timestamp}.csv"
-        self._export_executions_summary(pipeline_name, file_path)
+        self._export_executions_summary(pipeline_name, file_path, execution_id)
         exported_files['executions_summary'] = str(file_path)
         
         # 2. Performance por stage
         file_path = output_dir / f"{safe_pipeline_name}_stages_{timestamp}.csv"
-        self._export_stages_performance(pipeline_name, file_path)
+        self._export_stages_performance(pipeline_name, file_path, execution_id)
         exported_files['stages_performance'] = str(file_path)
         
         # 3. Métricas de calidad de validación
         file_path = output_dir / f"{safe_pipeline_name}_validation_quality_{timestamp}.csv"
-        self._export_validation_quality(pipeline_name, file_path)
+        self._export_validation_quality(pipeline_name, file_path, execution_id)
         exported_files['validation_quality'] = str(file_path)
         
         # 4. Detalle de validaciones fallidas
         file_path = output_dir / f"{safe_pipeline_name}_validation_failures_{timestamp}.csv"
-        self._export_validation_failures(pipeline_name, file_path)
+        self._export_validation_failures(pipeline_name, file_path, execution_id)
         exported_files['validation_failures'] = str(file_path)
         
         # 5. Timeline de ejecuciones
         file_path = output_dir / f"{safe_pipeline_name}_timeline_{timestamp}.csv"
-        self._export_timeline(pipeline_name, file_path)
+        self._export_timeline(pipeline_name, file_path, execution_id)
         exported_files['timeline'] = str(file_path)
         
         # 6. Análisis de errores
         file_path = output_dir / f"{safe_pipeline_name}_errors_{timestamp}.csv"
-        self._export_errors_analysis(pipeline_name, file_path)
+        self._export_errors_analysis(pipeline_name, file_path, execution_id)
         exported_files['errors_analysis'] = str(file_path)
         
         return exported_files
     
-    def _export_executions_summary(self, pipeline_name: str, output_path: Path):
+    def _export_executions_summary(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar resumen de todas las ejecuciones del pipeline."""
         query = """
             SELECT 
@@ -128,13 +131,19 @@ class LogExporter:
             FROM pipeline.executions e
             JOIN pipeline.pipelines p ON e.pipeline_id = p.id
             WHERE p.name = %s
-            ORDER BY e.start_time DESC;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported executions summary: {output_path.name}")
     
-    def _export_stages_performance(self, pipeline_name: str, output_path: Path):
+    def _export_stages_performance(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar performance detallada por stage."""
         query = """
             SELECT 
@@ -160,13 +169,19 @@ class LogExporter:
             JOIN pipeline.executions e ON s.execution_id = e.id
             JOIN pipeline.pipelines p ON e.pipeline_id = p.id
             WHERE p.name = %s
-            ORDER BY e.start_time DESC, s.stage_order;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC, s.stage_order;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported stages performance: {output_path.name}")
     
-    def _export_validation_quality(self, pipeline_name: str, output_path: Path):
+    def _export_validation_quality(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar métricas de calidad por suite de validación."""
         query = """
             SELECT 
@@ -187,13 +202,19 @@ class LogExporter:
             JOIN pipeline.executions e ON vs.execution_id = e.id
             JOIN pipeline.pipelines p ON e.pipeline_id = p.id
             WHERE p.name = %s
-            ORDER BY e.start_time DESC, vs.suite_name, vs.dataset_name;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC, vs.suite_name, vs.dataset_name;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported validation quality: {output_path.name}")
     
-    def _export_validation_failures(self, pipeline_name: str, output_path: Path):
+    def _export_validation_failures(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar detalle de validaciones fallidas."""
         query = """
             SELECT 
@@ -215,13 +236,19 @@ class LogExporter:
             JOIN pipeline.pipelines p ON e.pipeline_id = p.id
             WHERE p.name = %s
               AND vr.passed = false
-            ORDER BY e.start_time DESC, vr.suite_name, vr.severity DESC, vr.failed_count DESC;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC, vr.suite_name, vr.severity DESC, vr.failed_count DESC;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported validation failures: {output_path.name}")
     
-    def _export_timeline(self, pipeline_name: str, output_path: Path):
+    def _export_timeline(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar timeline con eventos importantes (simplificado)."""
         query = """
             SELECT 
@@ -242,13 +269,19 @@ class LogExporter:
             FROM pipeline.executions e
             JOIN pipeline.pipelines p ON e.pipeline_id = p.id
             WHERE p.name = %s
-            ORDER BY e.start_time DESC;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported timeline: {output_path.name}")
     
-    def _export_errors_analysis(self, pipeline_name: str, output_path: Path):
+    def _export_errors_analysis(self, pipeline_name: str, output_path: Path, execution_id: Optional[str] = None):
         """Exportar análisis de errores y warnings."""
         query = """
             SELECT 
@@ -267,10 +300,16 @@ class LogExporter:
             LEFT JOIN pipeline.stage_executions s ON e.id = s.execution_id
             WHERE p.name = %s
               AND (e.total_errors > 0 OR e.total_warnings > 0 OR s.error_count > 0 OR s.warning_count > 0)
-            ORDER BY e.start_time DESC, s.stage_order;
         """
         
-        self._execute_query_to_csv(query, (pipeline_name,), output_path)
+        params = [pipeline_name]
+        if execution_id:
+            query += " AND e.id = %s"
+            params.append(execution_id)
+            
+        query += " ORDER BY e.start_time DESC, s.stage_order;"
+        
+        self._execute_query_to_csv(query, tuple(params), output_path)
         logger.info(f"✓ Exported errors analysis: {output_path.name}")
     
     def _execute_query_to_csv(self, query: str, params: tuple, output_path: Path):
