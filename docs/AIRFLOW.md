@@ -56,9 +56,19 @@ Cada pipeline se descompone en 5 tareas ejecutables independientemente:
 - **2_validation**: Ejecuta validaciones de calidad y seguridad
 - **3_transformation**: Aplica transformaciones y enriquecimientos
 - **4_output**: Escribe resultados en destinos configurados
-- **5_export_logs**: Exporta logs y métricas (se ejecuta siempre, incluso si fallan tareas previas)
+- **5_export_logs**: Exporta logs y métricas de la ejecución actual a `artifacts/.../executions/<id>/logs`.
 
-**Beneficio**: Si falla la validación, puedes corregir el problema y re-ejecutar solo desde `2_validation` sin repetir la ingestion.
+**Beneficio**: Si falla la validación, puedes corregir el problema y re-ejecutar solo desde `2_validation` sin repetir la ingestion, gracias a la persistencia del estado.
+
+### Gestión de Estado y Contexto
+
+Para que las tareas individuales (que son procesos aislados en Airflow) compartan información como el ID de ejecución, el framework utiliza un mecanismo de persistencia en disco:
+
+1.  **Inicio**: La primera tarea crea/resetea el archivo `data/pipeline_state/<PipelineName>/context.json`.
+2.  **Continuidad**: Las tareas subsiguientes leen este archivo para obtener el `execution_id` vigente.
+3.  **Resultados**: Esto asegura que todos los logs y métricas de las 5 tareas se agrupen bajo el mismo ID en la base de datos y en los reportes exportados.
+
+> **Nota**: El directorio `data/pipeline_state` está montado como volumen en Docker, asegurando la persistencia entre contenedores efímeros.
 
 ## Configuración Docker
 

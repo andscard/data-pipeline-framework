@@ -13,11 +13,13 @@ Framework production-ready para construir pipelines de datos con validación int
 - 40+ tipos de validación semántica (PII, financieras, contacto).
 - Protección contra vulnerabilidades OWASP Top 10 (SQLi, XSS, etc.).
 - Cumplimiento de normativas (GDPR, PCI-DSS).
+- **Umbrales de Calidad Dinámicos**: Configuración granular de reglas de aceptación por pipeline.
 
 **Observabilidad:**
 - Sistema de auditoría detallado en PostgreSQL.
 - Dashboard HTML ejecutivo (Health Status, KPIs).
 - Exportación de métricas para análisis externo.
+- **Trazabilidad Contextual**: Seguimiento de ejecución end-to-end en entornos distribuidos.
 
 **Airflow Integration:**
 - Pipelines como código (DAGs automáticos).

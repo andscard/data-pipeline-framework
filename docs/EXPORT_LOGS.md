@@ -17,6 +17,7 @@ Es importante distinguir cómo se genera esta información dependiendo del entor
 Cuando ejecutas un pipeline manualmente con `run pipeline`, **los logs NO se exportan automáticamente a archivos CSV**.
 *   Los datos se guardan en la base de datos PostgreSQL (`pipeline.executions`, etc.).
 *   Debes ejecutar explícitamente el comando `export-logs` post-ejecución si requieres los archivos.
+*   **Comportamiento**: Exporta **todo el historial** de ejecuciones del pipeline a la carpeta `artifacts/<PipelineName>/exports/<timestamp>`.
 
 ```bash
 # Paso 1: Ejecutar pipeline (guarda en DB)
@@ -29,8 +30,9 @@ data-framework export-logs -n MyPipeline
 ### 2. Ejecución Orquestada (Airflow)
 En el entorno de Airflow, el DAG incluye una tarea dedicada `5_export_logs` al final.
 *   Esta tarea se ejecuta **automáticamente** en cada corrida.
-*   Tiene configurado `trigger_rule='all_done'`, por lo que genera los CSV incluso si el pipeline falla.
-*   Los archivos se guardan en la ruta configurada en el DAG (usualmente `data/output/logs`).
+*   Utiliza el archivo de estado `data/pipeline_state/context.json` para identificar la ejecución actual.
+*   **Comportamiento**: Exporta **únicamente los logs de la ejecución actual** (scoped export).
+*   **Ubicación**: Los archivos se guardan en `artifacts/<PipelineName>/executions/<Current_Execution_ID>/logs`.
 
 ---
 
