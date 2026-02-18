@@ -23,9 +23,7 @@ class HTMLReportGenerator:
         self,
         monitoring_summary: Dict[str, Any],
         audit_data: Optional[Dict[str, Any]] = None,
-        output_path: Optional[Path] = None,
-        include_stages: bool = True,
-        report_type: str = "technical"
+        output_path: Optional[Path] = None
     ) -> Path:
         """Generar reporte HTML profesional
         
@@ -33,50 +31,40 @@ class HTMLReportGenerator:
             monitoring_summary: Resumen de métricas del MonitoringCollector
             audit_data: Datos de auditoría (validation_results)
             output_path: Ruta de salida (opcional)
-            include_stages: Si True, incluye tabla de Pipeline Stages
-            report_type: 'technical' (validación) o 'execution' (completo)
         """
-        if not output_path:
-            execution_id = monitoring_summary.get('execution_id', 'unknown')
-            pipeline_name = monitoring_summary.get('pipeline_name', 'pipeline')
-            # Sanitizar nombre del pipeline para archivos
-            safe_pipeline_name = re.sub(r'[^a-zA-Z0-9_-]', '_', pipeline_name)
-            
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            stage_suffix = "validation" if report_type == "technical" else "executive"
-            
-            # Formato solicitado: <NombrePipeline>_<fecha en formato YYYYmmDD_HHMMSS>_<stage>.html
-            filename = f"{safe_pipeline_name}_{timestamp}_{stage_suffix}.html"
-            output_path = Config.REPORTS_DIR / filename
-        
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        html_content = self._build_html(monitoring_summary, audit_data, include_stages, report_type)
+
+        html_content = self._build_html(monitoring_summary, audit_data)
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        logger.info(f"✓ Reporte HTML generado: {output_path}")
+        logger.info(f"Reporte HTML generado: {output_path}")
         return output_path
     
-    def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]], include_stages: bool = True, report_type: str = "technical") -> str:
+    def _build_html(self, monitoring: Dict[str, Any], audit: Optional[Dict[str, Any]]) -> str:
         execution_id = monitoring.get('execution_id', 'N/A')[:8]
         pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
         start_time = monitoring.get('start_time', 'N/A')
         
-        report_title = "Reporte de Validación de Calidad de Datos" if report_type == "technical" else "Reporte Ejecutivo del Pipeline de Datos"
+        report_title = "Reporte de Validación de Calidad de Datos"
         
         health_status = monitoring.get('health_status', 'unknown')
         duration = monitoring.get('total_duration', 0)
         records = monitoring.get('total_records_processed', 0)
         stages = monitoring.get('stages', {})
+        thresholds = monitoring.get('thresholds', {})
         
         validation_stage = stages.get('VALIDATION', {})
-        quality_score = validation_stage.get('quality_score', 0)
+        # Ensure quality_score is numeric (float)
+        try:
+            quality_score = float(validation_stage.get('quality_score') or 0)
+        except (ValueError, TypeError):
+            quality_score = 0.0
+            
         validations_passed = validation_stage.get('validations_passed', 0)
         validations_failed = validation_stage.get('validations_failed', 0)
         
-        status_badge = self._get_status_badge(health_status, quality_score)
+        status_badge = self._get_status_badge(health_status, quality_score, thresholds)
         
         validation_results = []
         if audit and 'validation_results' in audit:
@@ -86,23 +74,9 @@ class HTMLReportGenerator:
         quality_thresholds = audit.get('quality_thresholds', {}) if audit else {}
 
         suites_summary = self._group_by_suite_from_summary(validation_summary)
-        
         dataset_scorecard_html = self._render_dataset_quality_summary(suites_summary, quality_thresholds)
-        
         suites_html = self._render_suites(suites_summary)
-        
         detailed_failures_html = self._render_detailed_failures(validation_results)
-        
-        stages_section = ""
-        if include_stages:
-            stages_html = self._render_stages(stages)
-            stages_section = f"""
-        <!-- Pipeline Stages -->
-        <section class="stages-section">
-            <h2>Etapas del Pipeline</h2>
-            {stages_html}
-        </section>
-        """
         
         return f"""<!DOCTYPE html>
 <html lang="es">
@@ -111,7 +85,7 @@ class HTMLReportGenerator:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{report_title} - {execution_id}</title>
     <style>
-{self._get_professional_css()}
+{self.get_css()}
     </style>
 </head>
 <body>
@@ -146,12 +120,12 @@ class HTMLReportGenerator:
                 </div>
                 <div class="summary-card">
                     <div class="card-label">Puntaje de Calidad</div>
-                    <div class="card-value {self._get_quality_class(quality_score)}">{quality_score:.1f}%</div>
+                    <div class="card-value {self._get_quality_class(quality_score, thresholds)}">{quality_score:.1f}%</div>
                 </div>
             </div>
             
-            <!-- Data Flow Summary (solo si include_stages) -->
-            {self._render_data_flow_section(stages) if include_stages else ''}
+            <!-- Data Flow Summary-->
+            {self._render_data_flow_section(stages)}
         </section>
         
         <!-- Validation Results -->
@@ -180,8 +154,6 @@ class HTMLReportGenerator:
             {detailed_failures_html}
         </section>
         
-        {stages_section}
-        
         <!-- Footer -->
         <footer class="footer">
             <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data Pipeline Framework v2.0</p>
@@ -190,7 +162,7 @@ class HTMLReportGenerator:
 </body>
 </html>"""
     
-    def _get_professional_css(self) -> str:
+    def get_css(self) -> str:
         """CSS profesional y empresarial"""
         return """
         * {
@@ -532,9 +504,13 @@ class HTMLReportGenerator:
         }
 """
     
-    def _get_status_badge(self, status: str, quality: float) -> str:
+    def _get_status_badge(self, status: str, quality: float, thresholds: Dict[str, float] = None) -> str:
         """Generar badge de status"""
         status_lower = str(status).lower()
+        thresholds = thresholds or {}
+        
+        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
         
         # Prioridad al status explícito del pipeline
         if status_lower in ['failed', 'error', 'critical', 'unhealthy']:
@@ -543,20 +519,26 @@ class HTMLReportGenerator:
             return '<span class="status-badge status-warning">WARNING</span>'
             
         # Fallback basado en quality score
-        if quality < 50:
+        if quality < quality_warning:
             return '<span class="status-badge status-critical">CRITICAL</span>'
-        elif quality < 80:
+        elif quality < quality_good:
             return '<span class="status-badge status-warning">WARNING</span>'
         else:
             return '<span class="status-badge status-healthy">HEALTHY</span>'
     
-    def _get_quality_class(self, score: float) -> str:
+    def _get_quality_class(self, score: float, thresholds: Dict[str, float] = None) -> str:
         """Clase CSS para quality score"""
-        if score >= 90:
+        thresholds = thresholds or {}
+        
+        quality_excellent = thresholds.get('quality_excellent', Config.DEFAULT_QUALITY_EXCELLENT)
+        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
+        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+        
+        if score >= quality_excellent:
             return 'quality-excellent'
-        elif score >= 70:
+        elif score >= quality_good:
             return 'quality-good'
-        elif score >= 50:
+        elif score >= quality_warning:
             return 'quality-warning'
         else:
             return 'quality-poor'
@@ -713,7 +695,7 @@ class HTMLReportGenerator:
         failed_suites = {name: data for name, data in suites.items() if data['failed'] > 0}
         
         if not failed_suites:
-            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">✓ Todas las validaciones pasaron exitosamente</div>'
+            return '<div style="padding: 20px; background: #d4edda; color: #155724; border-radius: 4px; margin-top: 20px;">Todas las validaciones pasaron exitosamente</div>'
         
         rows = []
         sorted_suites = sorted(failed_suites.items(), key=lambda x: x[1]['failed'], reverse=True)
@@ -725,10 +707,10 @@ class HTMLReportGenerator:
             failure_rate = (failed_count / total_count * 100) if total_count > 0 else 0
             
             # Color según severidad
-            if failure_rate > 50:
+            if failure_rate > (100 - Config.QUALITY_WARNING):
                 severity_color = '#dc3545'
                 severity_label = 'CRÍTICO'
-            elif failure_rate > 20:
+            elif failure_rate > (100 - Config.QUALITY_GOOD):
                 severity_color = '#fd7e14'
                 severity_label = 'ALTO'
             else:
@@ -999,71 +981,3 @@ class HTMLReportGenerator:
                 """)
         
         return ''.join(cards)
-    
-    def _render_stages(self, stages: dict) -> str:
-        """Renderizar tabla de stages"""
-        if not stages:
-            return ""
-        
-        stage_display = {
-            "INGESTION": "INGESTA",
-            "VALIDATION": "VALIDACIÓN",
-            "TRANSFORMATION": "TRANSFORMACIÓN",
-            "OUTPUT": "SALIDA"
-        }
-        
-        rows = []
-        for stage_name, data in stages.items():
-            display_name = stage_display.get(stage_name, stage_name)
-            duration = data.get('duration_seconds', 0)
-            records_in = data.get('records_input', 0)
-            records_out = data.get('records_output', 0)
-            errors = len(data.get('errors', []))
-            
-            status = '✓' if errors == 0 else '✗'
-            status_color = '#28a745' if errors == 0 else '#dc3545'
-            
-            # Explicación contextual por etapa
-            if stage_name == "INGESTION":
-                context = "Carga de fuentes"
-            elif stage_name == "VALIDATION":
-                context = f"{data.get('validations_passed', 0)} de {data.get('validations_passed', 0) + data.get('validations_failed', 0)} validaciones pasadas"
-            elif stage_name == "TRANSFORMATION":
-                context = "Filtrado y transformado"
-            elif stage_name == "OUTPUT":
-                context = "Escritura en destinos"
-            else:
-                context = ""
-            
-            rows.append(f"""
-            <tr>
-                <td><span class="stage-name">{display_name}</span></td>
-                <td style="text-align: right;">{duration:.2f}s</td>
-                <td style="text-align: right;">{records_in:,}</td>
-                <td style="text-align: right;">{records_out:,}</td>
-                <td style="font-size: 0.85em; color: #6c757d;">{context}</td>
-                <td style="text-align: right; color: {status_color};">{errors}</td>
-                <td style="text-align: center; font-size: 1.2em; color: {status_color};">{status}</td>
-            </tr>
-            """)
-        
-        return f"""
-        <table class="stages-table">
-            <thead>
-                <tr>
-                    <th>Etapa</th>
-                    <th style="text-align: right;">Duración</th>
-                    <th style="text-align: right;">Entrada (Regs)</th>
-                    <th style="text-align: right;">Salida (Regs)</th>
-                    <th>Contexto</th>
-                    <th style="text-align: right;">Errores</th>
-                    <th style="text-align: center;">Estado</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
-        </table>
-        """
-    
-

@@ -1,22 +1,10 @@
 -- scripts/init_db.sql
 
--- ============================================
--- Extensions
--- ============================================
-
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ============================================
--- Schemas
--- ============================================
-
 CREATE SCHEMA IF NOT EXISTS pipeline;
-
--- ============================================
--- Tables: Pipelines
--- ============================================
 
 CREATE TABLE IF NOT EXISTS pipeline.pipelines (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -68,10 +56,6 @@ BEGIN
         CREATE INDEX idx_pipelines_last_run_at ON pipeline.pipelines(last_run_at DESC);
     END IF;
 END $$;
-
--- ============================================
--- Tables: Executions
--- ============================================
 
 CREATE TABLE IF NOT EXISTS pipeline.executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -168,10 +152,6 @@ BEGIN
     END IF;
 END $$;
 
--- ============================================
--- Tables: Stage Executions
--- ============================================
-
 CREATE TABLE IF NOT EXISTS pipeline.stage_executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     execution_id UUID NOT NULL REFERENCES pipeline.executions(id) ON DELETE CASCADE,
@@ -231,10 +211,6 @@ BEGIN
         CREATE INDEX idx_stage_executions_start_time ON pipeline.stage_executions(start_time DESC);
     END IF;
 END $$;
-
--- ============================================
--- Tables: Validation Results
--- ============================================
 
 CREATE TABLE IF NOT EXISTS pipeline.validation_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -296,10 +272,6 @@ BEGIN
     END IF;
 END $$;
 
--- ============================================
--- Tables: Validation Summary
--- ============================================
-
 CREATE TABLE IF NOT EXISTS pipeline.validation_summary (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     execution_id UUID NOT NULL REFERENCES pipeline.executions(id) ON DELETE CASCADE,
@@ -342,10 +314,6 @@ BEGIN
     END IF;
 END $$;
 
--- ============================================
--- Tables: Audit Logs
--- ============================================
-
 CREATE TABLE IF NOT EXISTS pipeline.audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     execution_id UUID REFERENCES pipeline.executions(id) ON DELETE SET NULL,
@@ -383,10 +351,6 @@ BEGIN
     END IF;
 END $$;
 
--- ============================================
--- Functions
--- ============================================
-
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -404,10 +368,6 @@ BEGIN
             EXECUTE FUNCTION update_updated_at_column();
     END IF;
 END $$;
-
--- ============================================
--- Permissions
--- ============================================
 
 GRANT USAGE ON SCHEMA pipeline TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pipeline TO PUBLIC;

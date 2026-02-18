@@ -22,6 +22,7 @@ from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 from enum import Enum
 import logging
+from src.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,9 @@ class ExecutionMetrics:
     # Métricas de calidad global
     overall_quality_score: Optional[float] = None
     
+    # Custom thresholds (optional)
+    thresholds: Dict[str, float] = field(default_factory=dict)
+    
     def add_stage_metrics(self, stage: StageMetrics):
         """Agregar métricas de una etapa"""
         self.stages[stage.stage_name] = stage
@@ -201,9 +205,13 @@ class ExecutionMetrics:
         success_rate = ((self.total_records_processed - self.total_records_failed) / 
                        self.total_records_processed * 100)
         
-        if success_rate >= 95:
+        # Use custom thresholds if provided, else use global defaults
+        healthy_threshold = self.thresholds.get('operational_healthy', Config.DEFAULT_HEALTH_OPERATIONAL_HEALTHY)
+        warning_threshold = self.thresholds.get('operational_warning', Config.DEFAULT_HEALTH_OPERATIONAL_WARNING)
+
+        if success_rate >= healthy_threshold:
             return HealthStatus.HEALTHY
-        elif success_rate >= 80:
+        elif success_rate >= warning_threshold:
             return HealthStatus.WARNING
         else:
             return HealthStatus.CRITICAL
@@ -222,6 +230,7 @@ class ExecutionMetrics:
             'total_errors': self.total_errors,
             'total_warnings': self.total_warnings,
             'overall_quality_score': round(self.overall_quality_score, 2) if self.overall_quality_score else None,
+            'thresholds': self.thresholds,
             'stages': {name: stage.to_dict() for name, stage in self.stages.items()}
         }
 
@@ -242,16 +251,18 @@ class MonitoringCollector:
     - Logs detallados (eso es logging estándar)
     """
     
-    def __init__(self, execution_id: str, pipeline_name: str):
+    def __init__(self, execution_id: str, pipeline_name: str, thresholds: Optional[Dict[str, float]] = None):
         """
         Args:
             execution_id: ID único de la ejecución
             pipeline_name: Nombre del pipeline
+            thresholds: Diccionario opcional de umbrales personalizados
         """
         self.metrics = ExecutionMetrics(
             execution_id=execution_id,
             pipeline_name=pipeline_name,
-            start_time=datetime.now()
+            start_time=datetime.now(),
+            thresholds=thresholds or {}
         )
         self._current_stage: Optional[StageMetrics] = None
     
@@ -278,7 +289,9 @@ class MonitoringCollector:
         try:
             yield stage
             if stage_name == "VALIDATION" and stage.quality_score is not None:
-                success = stage.quality_score >= 75.0
+                # Use custom threshold if available, else default to Config
+                min_score = self.metrics.thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+                success = stage.quality_score >= min_score
             else:
                 success = True
             stage.complete(success=success)
@@ -301,7 +314,7 @@ class MonitoringCollector:
         Registrar métricas de validación.
         
         Args:
-            validator_name: Nombre del validador (Pandera, GE)
+            validator_name: Nombre del validador (GE)
             quality_score: Score de calidad (0-100)
             passed: Validaciones pasadas
             failed: Validaciones fallidas

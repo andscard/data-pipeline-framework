@@ -187,14 +187,12 @@ Write-Host "`n================================================" -ForegroundColor
 Write-Host "   SETUP COMPLETADO" -ForegroundColor Green
 Write-Host "================================================`n" -ForegroundColor Green
 
-Write-Host "USO DEL COMANDO GLOBAL:`n" -ForegroundColor Cyan
-Write-Host "  1. Recargar perfil:    . `$PROFILE" -ForegroundColor White
-Write-Host "  2. Ejecutar pipeline:  data-framework run pipeline -c examples/pipeline.yml" -ForegroundColor White
+Write-Host "PASOS PARA UTILIZAR EL FRAMEWORK:`n" -ForegroundColor Cyan
+Write-Host "  1. Ver estado DB:      python scripts/utils_db.py status" -ForegroundColor White
+Write-Host "  2. Recargar perfil:    . `$PROFILE" -ForegroundColor White
 Write-Host "  3. Infectar datos:     data-framework infect -c examples/infection_config.yml" -ForegroundColor White
-Write-Host "`nO USA EL METODO TRADICIONAL:`n" -ForegroundColor Cyan
-Write-Host "  1. Activar entorno:    .venv\Scripts\Activate.ps1" -ForegroundColor White
-Write-Host "  2. Ver estado DB:      python scripts/utils_db.py status" -ForegroundColor White
-Write-Host "  3. Ejecutar pipeline:  data-framework run pipeline -c examples/pipeline.yml" -ForegroundColor White
+Write-Host "  4. Ejecutar pipeline:  data-framework run pipeline -c examples/pipelines/data_pipeline.yml" -ForegroundColor White
+Write-Host "     (o) data-framework run pipeline -c examples/pipelines/infected_data_pipeline.yml" -ForegroundColor White
 Write-Host "`nCOMANDOS UTILES:`n" -ForegroundColor Cyan
 Write-Host "  python scripts/utils_db.py status|stats|executions" -ForegroundColor White
 Write-Host "  docker-compose down" -ForegroundColor Gray

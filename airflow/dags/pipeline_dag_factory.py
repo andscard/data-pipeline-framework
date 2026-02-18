@@ -45,8 +45,10 @@ Autor: Data Team
 Versión: 1.0.0
 """
 
+import pendulum
 import os
 import sys
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
@@ -56,8 +58,16 @@ import yaml
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.exceptions import AirflowFailException
 from airflow.utils.dates import days_ago
+from src.pipeline_executor import PipelineExecutor
+from src.modules.validation.exceptions import QualityThresholdError
+
+import json
+from src.modules.auditing.log_exporter import LogExporter
+from src.modules.ingestion.config import POSTGRES_CONFIG
+
+# Logger setup
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CONFIGURATION
@@ -67,17 +77,13 @@ from airflow.utils.dates import days_ago
 FRAMEWORK_PATH = Path("/opt/airflow/framework")
 if str(FRAMEWORK_PATH) not in sys.path:
     sys.path.append(str(FRAMEWORK_PATH))
-
-try:
-    from src.pipeline_executor import PipelineExecutor
-    from src.modules.validation.exceptions import QualityThresholdError
-except ImportError:
-    # Fallback para cuando el DAG se parsea fuera del contenedor (IDE/Local)
-    print("⚠️  Warning: src.pipeline_executor not found. Framework path required.")
-    pass
+    
+# Actualizar paths relativos para que funcionen dentro de Airflow
+STATE_DIR = FRAMEWORK_PATH / "data" / "pipeline_state"
+ARTIFACTS_DIR = FRAMEWORK_PATH / "artifacts"
 
 PIPELINES_DIR = FRAMEWORK_PATH / "examples" / "pipelines"
-CLI_COMMAND = "data-framework"  # Comando global instalado en Docker
+CLI_COMMAND = "data-framework"  # Ejecución del CLI dentro del contenedor de Airflow
 
 # Environment variables para BashOperator
 # Las variables PostgreSQL se heredan de docker-compose.airflow.yml
@@ -114,38 +120,6 @@ SCHEDULE_PRESETS = {
 }
 
 
-def execute_pipeline(pipeline_name: str, config_path: str):
-    """
-    Función ejecutable por PythonOperator.
-    Lanza la ejecución del pipeline dentro del proceso worker de Airflow.
-    """
-    import yaml
-    from src.pipeline_executor import PipelineExecutor
-    from src.modules.validation.exceptions import QualityThresholdError
-    
-    print(f"🚀 Iniciando pipeline: {pipeline_name}")
-    print(f"📄 Config: {config_path}")
-    
-    try:
-        # Cargar configuración
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-            
-        # Ejecutar
-        executor = PipelineExecutor(pipeline_name, config)
-        executor.execute()
-        print("✅ Pipeline finalizado exitosamente")
-        
-    except QualityThresholdError as e:
-        print(f"❌ FALLO DE CALIDAD: {e}")
-        # Re-lanzar para que Airflow lo detecte como fallo NO reintentable
-        # (QualityThresholdError hereda de AirflowFailException)
-        raise e
-        
-    except Exception as e:
-        print(f"❌ Error general en pipeline: {e}")
-        raise e
-
 def load_pipeline_config(yaml_path: Path) -> Optional[Dict[str, Any]]:
     """
     Carga configuración de pipeline desde archivo YAML.
@@ -162,12 +136,12 @@ def load_pipeline_config(yaml_path: Path) -> Optional[Dict[str, Any]]:
         
         # Validar que tenga sección pipeline
         if 'pipeline' not in config:
-            print(f"⚠️  {yaml_path.name}: No tiene sección 'pipeline', ignorando")
+            logger.warning(f"⚠️  {yaml_path.name}: No tiene sección 'pipeline', ignorando")
             return None
             
         return config
     except Exception as e:
-        print(f"❌ Error cargando {yaml_path.name}: {e}")
+        logger.error(f"❌ Error cargando {yaml_path.name}: {e}")
         return None
 
 
@@ -224,11 +198,8 @@ def execute_pipeline_stage(pipeline_name: str, config_path: str, stage: str):
     """
     Función ejecutable por PythonOperator para correr una etapa específica.
     """
-    import yaml
-    from src.pipeline_executor import PipelineExecutor
-    from src.modules.validation.exceptions import QualityThresholdError
     
-    print(f"🚀 Iniciando etapa {stage} para: {pipeline_name}")
+    logger.info(f"🚀 Iniciando etapa {stage} para: {pipeline_name}")
     
     try:
         # Cargar configuración desde el path absoluto
@@ -241,16 +212,79 @@ def execute_pipeline_stage(pipeline_name: str, config_path: str, stage: str):
         # Ejecutar etapa
         executor = PipelineExecutor(pipeline_name, config)
         executor.execute(stage=stage)
-        print(f"✅ Etapa {stage} finalizada exitosamente")
+        logger.info(f"✅ Etapa {stage} finalizada exitosamente")
         
     except QualityThresholdError as e:
-        print(f"❌ FALLO DE CALIDAD IRRECUPERABLE: {e}")
+        logger.error(f"❌ FALLO DE CALIDAD IRRECUPERABLE: {e}")
         # Esto detendrá los reintentos automáticos
         raise e
         
     except Exception as e:
-        print(f"❌ Error en etapa {stage}: {e}")
+        logger.exception(f"❌ Error en etapa {stage}: {e}")
         raise e
+
+def execute_export_logs_for_pipeline(pipeline_name: str):
+    """
+    Exportar logs de la ejecución actual del pipeline hacia su carpeta de artifacts unificada.
+    Lee el contexto de ejecución para determinar la carpeta correcta.
+    """
+    logger.info(f"📤 Iniciando exportación de logs para: {pipeline_name}")
+    
+    try:
+        # Determinar execution_id desde el contexto guardado
+        context_file = STATE_DIR / pipeline_name / "context.json"
+        
+        execution_id = None
+        timestamp = None
+        
+        if context_file.exists():
+            with open(context_file, 'r') as f:
+                context = json.load(f)
+                execution_id = context.get("execution_id")
+                timestamp = context.get("timestamp")
+        
+        if not execution_id or not timestamp:
+            logger.warning(f"⚠️ No se encontró contexto de ejecución para {pipeline_name}, usando fallback")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = ARTIFACTS_DIR / pipeline_name / "exports" / f"airflow_fallback_{timestamp}"
+        else:
+            execution_folder_name = f"{timestamp}_{execution_id}"
+            output_dir = ARTIFACTS_DIR / pipeline_name / "executions" / execution_folder_name / "logs"
+        
+        print(f"  Contexto encontrado: execution_id={execution_id}, timestamp={timestamp}")
+        print(f"  Exportando logs a: {output_dir}")
+        logger.info(f"  Contexto encontrado: execution_id={execution_id}, timestamp={timestamp}")
+        logger.info(f"  Exportando logs a: {output_dir}")
+
+        logger.info(f"📂 Destino de logs: {output_dir}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Ejecutar exportación usando LogExporter directamente
+        exporter = LogExporter(POSTGRES_CONFIG)
+        exporter.connect()
+        
+        # Verificar que el pipeline existe
+        available_pipelines = exporter.get_available_pipelines()
+        
+        if pipeline_name in available_pipelines:
+            # Exportar logs filtrando por execution_id si es posible, o todo el pipeline
+            # Nota: LogExporter.export_all exporta todo el histórico. 
+            # Idealmente deberíamos exportar solo esta ejecución, pero mantenemos comportamiento original
+            exported_files = exporter.export_all(pipeline_name, output_dir)
+            
+            for file_type, file_path in exported_files.items():
+                logger.info(f"  - {Path(file_path).name}")
+                
+            logger.info("✅ Exportación completada exitosamente")
+        else:
+            logger.warning(f"⚠️ Pipeline '{pipeline_name}' no encontrado en BD para exportar logs")
+            
+        exporter.close()
+
+    except Exception as e:
+        logger.exception(f"❌ Error exportando logs: {e}")
+        raise e
+
 
 def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
     """
@@ -282,19 +316,17 @@ def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
         dag_id=dag_id,
         default_args=default_args,
         description=description,
-        schedule_interval=schedule,
-        start_date=days_ago(1),
+        schedule=schedule,
+        start_date=pendulum.today('UTC').add(days=-1), 
         catchup=False,
         tags=['data-framework', 'pipeline'],
     )
     
-    # Path relativo al archivo de configuración (debe ser relativo al framework root)
     config_path = f"examples/pipelines/{yaml_path.name}"
     
     # ========================================================================
     # TAREAS SEPARADAS POR ETAPA DEL PIPELINE
     # ========================================================================
-    # Esto permite ver el progreso granular y re-ejecutar etapas específicas
     
     # 1. Ingestion
     ingestion_task = PythonOperator(
@@ -344,13 +376,15 @@ def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
         dag=dag,
     )
     
-    # 5. Export Logs (mantenemos BashOperator o PythonOperator)
-    export_logs = BashOperator(
-        task_id='5_export_logs',
-        bash_command=f"cd /opt/airflow/framework && {CLI_COMMAND} export-logs -n {pipeline_name} -o data/output/logs",
-        env=TASK_ENV,
+    # 5. Export Logs
+    export_logs = PythonOperator(
+        task_id='5_export_logs_unified',
+        python_callable=execute_export_logs_for_pipeline,
+        op_kwargs={
+            'pipeline_name': pipeline_name,
+        },
         dag=dag,
-        trigger_rule='all_done',  # Ejecutar aunque fallen etapas anteriores
+        trigger_rule='all_done',  # Ejecutar aunque fallen etapas anteriores (best effort)
     )
     
     # ========================================================================
@@ -359,7 +393,7 @@ def create_pipeline_dag(yaml_path: Path) -> Optional[DAG]:
     # Cada etapa depende de la anterior (flujo lineal)
     ingestion_task >> validation_task >> transformation_task >> output_task >> export_logs
     
-    print(f"✅ DAG creado: {dag_id} (Schedule: {schedule or 'Manual'})")
+    logger.info(f"✅ DAG creado: {dag_id} (Schedule: {schedule or 'Manual'})")
     
     return dag
 
@@ -378,29 +412,29 @@ def discover_and_create_dags() -> Dict[str, DAG]:
     dags = {}
     
     if not PIPELINES_DIR.exists():
-        print(f"⚠️  Directorio de pipelines no encontrado: {PIPELINES_DIR}")
+        logger.warning(f"⚠️  Directorio de pipelines no encontrado: {PIPELINES_DIR}")
         return dags
     
-    print(f"🔍 Escaneando pipelines en: {PIPELINES_DIR}")
+    logger.info(f"🔍 Escaneando pipelines en: {PIPELINES_DIR}")
     
     # Buscar archivos YAML
     yaml_files = list(PIPELINES_DIR.glob("*.yml")) + list(PIPELINES_DIR.glob("*.yaml"))
     
     if not yaml_files:
-        print("⚠️  No se encontraron archivos de configuración (.yml/.yaml)")
+        logger.warning("⚠️  No se encontraron archivos de configuración (.yml/.yaml)")
         return dags
     
-    print(f"📋 Encontrados {len(yaml_files)} archivos de configuración")
+    logger.info(f"📋 Encontrados {len(yaml_files)} archivos de configuración")
     
     # Crear DAG por cada pipeline
     for yaml_path in yaml_files:
-        print(f"\n🔨 Procesando: {yaml_path.name}")
+        logger.debug(f"🔨 Procesando: {yaml_path.name}")
         
         dag = create_pipeline_dag(yaml_path)
         if dag:
             dags[dag.dag_id] = dag
     
-    print(f"\n✅ Total de DAGs creados: {len(dags)}")
+    logger.info(f"✅ Total de DAGs creados: {len(dags)}")
     
     return dags
 
@@ -410,18 +444,11 @@ def discover_and_create_dags() -> Dict[str, DAG]:
 # ============================================================================
 
 # Generar DAGs automáticamente
-print("=" * 80)
-print("🚀 Data Pipeline Framework - DAG Factory")
-print("=" * 80)
-
 generated_dags = discover_and_create_dags()
 
-print("=" * 80)
-print(f"📊 DAGs disponibles en Airflow: {len(generated_dags)}")
+# Log summary
 if generated_dags:
-    for dag_id in generated_dags.keys():
-        print(f"   - {dag_id}")
-print("=" * 80)
+    logger.info(f"📊 DAGs disponibles en Airflow: {list(generated_dags.keys())}")
 
 # Exponer DAGs al namespace de Airflow
 globals().update(generated_dags)

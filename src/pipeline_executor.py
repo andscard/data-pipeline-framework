@@ -2,16 +2,15 @@
 Pipeline Executor - Orquestador principal del framework.
 """
 
-import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
-import yaml
-import os
-
+import pickle
+import json
+import traceback
+from sqlalchemy import create_engine, text, pool
 from src.modules.ingestion.multi_source_loader import MultiSourceLoader
-from src.modules.validation.pandera_validator import PanderaValidator
 from src.modules.validation.ge_validator import GreatExpectationsValidator
 from src.modules.validation.schema_validator import convert_simple_validation_to_ge
 from src.modules.transformation import DataTransformer
@@ -20,13 +19,10 @@ from src.modules.monitoring import MonitoringCollector
 from src.modules.reporting.html_generator import HTMLReportGenerator
 from src.modules.reporting.executive_report import ExecutiveReportGenerator
 from src.modules.ingestion.config import POSTGRES_CONFIG
-from src.config import config
 from src.modules.validation.exceptions import QualityThresholdError
-# Security detection moved to validation stage
-# Data infection happens PRE-PIPELINE using data_infection module
+from src.config import Config
 
 logger = logging.getLogger(__name__)
-
 
 class ExecutionResult:
     """Resultado de ejecución de pipeline."""
@@ -45,6 +41,12 @@ class ExecutionResult:
         self.report_path = None
         self.monitoring_summary = None  # Métricas de MonitoringCollector
         
+    def fail(self, error: str):
+        """Marcar como fallida."""
+        self.status = "failed"
+        self.errors.append(error)
+        self.complete("failed")
+
     def complete(self, status: str = "completed"):
         """Completar ejecución."""
         self.end_time = datetime.now()
@@ -81,8 +83,7 @@ class PipelineExecutor:
         # Datasets en memoria
         self.datasets = {}
         
-        # State directory para ejecución de etapas individuales
-        self.state_dir = Path("data/pipeline_state") / name
+        self.state_dir = Config.DATA_DIR / "pipeline_state" / name
         self.state_dir.mkdir(parents=True, exist_ok=True)
         
         # Módulos
@@ -98,10 +99,18 @@ class PipelineExecutor:
     def _save_state(self):
         """Guardar estado de datasets, métricas y validation results para ejecución de etapas individuales."""
         try:
-            import pickle
             state_file = self.state_dir / "datasets.pkl"
             metrics_file = self.state_dir / "metrics.pkl"
             validation_file = self.state_dir / "validation_results.pkl"
+            context_file = self.state_dir / "context.json"
+
+            # Guardar contexto de ejecución (ID y timestamp)
+            context = {
+                "execution_id": self.execution_id,
+                "timestamp": getattr(self, 'execution_timestamp', datetime.now().strftime("%Y-%m-%d"))
+            }
+            with open(context_file, 'w') as f:
+                json.dump(context, f)
             
             # Guardar datasets
             with open(state_file, 'wb') as f:
@@ -128,10 +137,26 @@ class PipelineExecutor:
     def _load_state(self):
         """Cargar estado de datasets, métricas y validation results desde ejecución previa."""
         try:
-            import pickle
             state_file = self.state_dir / "datasets.pkl"
             metrics_file = self.state_dir / "metrics.pkl"
             validation_file = self.state_dir / "validation_results.pkl"
+            context_file = self.state_dir / "context.json"
+            execution_file = self.state_dir / "execution_id.txt"
+
+            # Cargar contexto (preferir JSON nuevo, fallback a TXT antiguo)
+            if context_file.exists():
+                with open(context_file, 'r') as f:
+                    context = json.load(f)
+                    self.execution_id = context.get("execution_id")
+                    self.execution_timestamp = context.get("timestamp")
+                logger.info(f"✓ Contexto restaurado: ID={self.execution_id}, Timestamp={self.execution_timestamp}")
+            elif execution_file.exists():
+                with open(execution_file, 'r') as f:
+                    self.execution_id = f.read().strip()
+                # Si venimos de versión vieja sin timestamp guardado, se generará uno nuevo en setup (no ideal, pero fallback)
+                logger.info(f"✓ Execution ID restaurado (legacy): {self.execution_id}")
+            else:
+                logger.warning(f"No se encontró contexto previo")
             
             # Cargar datasets
             if state_file.exists():
@@ -184,34 +209,26 @@ class PipelineExecutor:
         
         return self.pipeline_id
     
-    @classmethod
-    def load(cls, name: str) -> Optional['PipelineExecutor']:
-        """
-        Cargar pipeline existente desde la base de datos.
+    def _setup_artifacts_structure(self):
+        """Crear estructura de carpetas para artifacts de la ejecución."""
         
-        Args:
-            name: Nombre del pipeline
+        # timestamp_guid para carpeta única (reutilizar si es continuación)
+        timestamp = getattr(self, 'execution_timestamp', None)
+        if not timestamp:
+            timestamp = datetime.now().strftime("%Y-%m-%d")
+            self.execution_timestamp = timestamp
             
-        Returns:
-            Instancia de PipelineExecutor o None si no existe
-        """
-        audit = AuditManager(POSTGRES_CONFIG)
-        if not audit.connect():
-            return None
+        execution_folder_name = f"{timestamp}_{self.execution_id}"
         
-        pipeline_data = audit.get_pipeline_by_name(name)
-        audit.close()
+        # Base unificada: artifacts/{pipeline_name}/executions/{execution_id}/
+        self.artifacts_base_path = Config.ARTIFACTS_DIR / self.name / "executions" / execution_folder_name
+        self.reports_path = self.artifacts_base_path / "reports"
+        self.logs_path = self.artifacts_base_path / "logs"
         
-        if not pipeline_data:
-            return None
-        
-        # Reconstruir configuración desde config
-        config = pipeline_data.get('config', {})
-        executor = cls(name, config)
-        executor.pipeline_id = str(pipeline_data['id'])
-        
-        return executor
-    
+        # Crear directorios
+        self.reports_path.mkdir(parents=True, exist_ok=True)
+        self.logs_path.mkdir(parents=True, exist_ok=True)
+            
     def execute(self, dry_run: bool = False, stage: Optional[str] = None) -> ExecutionResult:
         """
         Ejecutar pipeline completo o una etapa individual.
@@ -227,23 +244,47 @@ class PipelineExecutor:
         if not self.pipeline_id:
             self.register()
         
-        self.execution_id = self.audit.start_execution(
-            pipeline_id=self.pipeline_id,
-            execution_type="manual"
-        )
+        # Determinar si debemos continuar una ejecución existente
+        is_continuation = stage and stage != 'ingestion'
         
-        if stage:
+        if is_continuation:
+            # Intentar cargar execution_id previo
             self._load_state()
+            
+            if not self.execution_id:
+                # Si no hay ID previo, crear una nueva ejecución (fallback)
+                logger.warning(f"No se encontró execution ID previo para etapa {stage}, iniciando nueva ejecución")
+                self.execution_id = self.audit.start_execution(
+                    pipeline_id=self.pipeline_id,
+                    execution_type="manual"
+                )
+            else:
+                logger.info(f"Continuando ejecución existente: {self.execution_id} para etapa {stage}")
+        else:
+            # Nueva ejecución (ingestion o pipeline completo)
+            self.execution_id = self.audit.start_execution(
+                pipeline_id=self.pipeline_id,
+                execution_type="manual"
+            )
+        
+        # Configurar estructura de artifacts
+        self._setup_artifacts_structure()
+        
+        # Obtener thresholds de la configuración si existen
+        thresholds = self.config.get('thresholds') or self.config.get('quality_thresholds')
         
         self.monitoring = MonitoringCollector(
             execution_id=self.execution_id,
-            pipeline_name=self.name
+            pipeline_name=self.name,
+            thresholds=thresholds
         )
         
-        if stage and self._previous_metrics:
+        # Restaurar métricas previas si es necesario
+        # Si es continuation, ya se cargaron en _load_state, ahora solo las aplicamos
+        if is_continuation and self._previous_metrics:
             for stage_name, stage_metrics in self._previous_metrics.stages.items():
                 self.monitoring.metrics.add_stage_metrics(stage_metrics)
-            logger.info(f"✓ Métricas restauradas: {len(self._previous_metrics.stages)} etapas previas")
+            logger.info(f"✓ Métricas restauradas al monitor: {len(self._previous_metrics.stages)} etapas previas")
         
         result = ExecutionResult(self.name, self.execution_id)
         
@@ -254,8 +295,8 @@ class PipelineExecutor:
             
             if not stage or stage == 'ingestion':
                 self._execute_ingestion(result)
-                if stage == 'ingestion':
-                    self._save_state()
+                # Siempre guardar estado después de ingestión
+                self._save_state()
             
             if not stage or stage == 'validation':
                 self._execute_validation(result)
@@ -275,75 +316,38 @@ class PipelineExecutor:
             
             self.monitoring.finalize()
             monitoring_summary = self.monitoring.get_summary()
-            health_status = self.monitoring.get_health_status()
-            execution_status = "completed"
-            result.complete(execution_status)
+            
+            # Solo marcar como completado en DB si es output o pipeline completo
+            if not stage or stage == 'output':
+                health_status = self.monitoring.get_health_status()
+                execution_status = "completed"
+                result.complete(execution_status)
+                self.audit.complete_execution(
+                    execution_id=self.execution_id,
+                    status=execution_status,
+                    executive_report_path=str(self.reports_path / "executive_report.html")
+                )
+                self._generate_executive_report(monitoring_summary)
+            else:
+                # Para etapas intermedias, solo actualizamos result localmente pero no cerramos la ejecución en DB
+                result.complete("in_progress")
             
             if stage == 'validation':
                 self._generate_validation_report(monitoring_summary)
-            elif not stage or stage == 'output':
-                self._generate_executive_report(monitoring_summary)
-            
-            self.audit.complete_execution(
-                execution_id=self.execution_id,
-                status=execution_status,
-                records_processed=result.records_processed,
-                records_failed=result.records_failed,
-                stages_summary=[{
-                    'stage_name': s.stage_name,
-                    'status': s.status.value,
-                    'duration_seconds': s.duration_seconds,
-                    'records_input': s.records_input,
-                    'records_output': s.records_output,
-                    'records_failed': s.records_failed,
-                    'quality_score': s.quality_score,
-                    'validations_passed': s.validations_passed,
-                    'validations_failed': s.validations_failed
-                } for s in self.monitoring.metrics.stages.values()],
-                quality_score=monitoring_summary.get('overall_quality_score'),
-                health_status=health_status.value,
-                total_errors=monitoring_summary.get('total_errors', 0),
-                total_warnings=monitoring_summary.get('total_warnings', 0),
-                report_path=str(result.report_path) if result.report_path else None,
-                metrics={'health_status': health_status.value}
-            )
-            
-            # Guardar resumen de monitoring en result para reporte HTML
-            result.monitoring_summary = monitoring_summary
-            
+
+            return result
+
         except Exception as e:
-            result.errors.append(str(e))
-            result.exception = e  # Store exception object
-            result.status = "failed"
-            result.complete("failed")
-            
-            # Re-raise explicit QualityThresholdError if caller should handle it directly
-            # This allows Airflow/CLI to detect "no-retry" conditions
-            should_raise = isinstance(e, QualityThresholdError)
-            
-            # Finalizar monitoring incluso en caso de error
-            if self.monitoring:
-                self.monitoring.finalize()
-                result.monitoring_summary = self.monitoring.get_summary()
-            
-            self.audit.complete_execution(
-                execution_id=self.execution_id,
-                status="failed",
-                records_processed=result.records_processed,
-                records_failed=result.records_failed,
-                error_message=str(e),
-                # Add quality score if we have monitoring summary
-                quality_score=result.monitoring_summary.get('overall_quality_score') if result.monitoring_summary else 0
-            )
-            
-            if should_raise:
-                 logger.error("Raising QualityThresholdError for orchestrator handling")
-                 raise e
-        
+            logger.error(f"Error en ejecución: {e}")
+            if self.execution_id:
+                try:
+                    self.audit.fail_execution(self.execution_id, str(e))
+                except:
+                    pass
+            result.fail(str(e))
+            raise
         finally:
             self.audit.close()
-        
-        return result
     
     def _execute_ingestion(self, result: ExecutionResult):
         """Ejecutar etapa de ingestion."""
@@ -410,21 +414,16 @@ class PipelineExecutor:
                 error_details=stage.errors
             )
     
-    # SECURITY STAGE REMOVED
-    # Security testing ahora se hace PRE-PIPELINE usando data_infection module
-    # La detección de ataques ocurre en _execute_validation()
-    
     def _execute_validation(self, result: ExecutionResult):
         """
         Ejecutar etapa de validation.
         
         Esta etapa ahora incluye:
-          1. Validación de esquema (Pandera)
-          2. Validación de calidad (Great Expectations)
-          3. Detección de ataques OWASP Top 10 (si datos fueron pre-infectados)
+          1. Validación de esquema y calidad (Great Expectations)
+          2. Detección de ataques OWASP Top 10 (si datos fueron pre-infectados)
         
         Soporta dos formatos de configuración:
-          a) Sintaxis simplificada (schema + custom_validations)
+          a) Sintaxis simplificada (schema + custom_validations) -> Convertida a GE
           b) Sintaxis legacy (expectations directas)
         """
         with self.monitoring.track_stage("VALIDATION") as stage:
@@ -437,11 +436,9 @@ class PipelineExecutor:
             # Support both 'quality' (legacy) and 'validation' (new) config keys
             validation_config = self.config.get('validation', self.config.get('quality', {}))
             
-            # NUEVO: Detectar y convertir sintaxis simplificada
             if 'schema' in validation_config:
                 logger.info("Detected simplified schema validation syntax - converting to GE expectations")
                 converted_config = convert_simple_validation_to_ge(validation_config)
-                # Merge converted expectations con las existentes
                 validation_config = {
                     **validation_config,
                     'expectations': converted_config.get('expectations', [])
@@ -454,21 +451,6 @@ class PipelineExecutor:
             
             # Estructura para trackear estadísticas por dataset
             dataset_stats = {}
-
-            # Validación de esquema con Pandera
-            schema_validations = validation_config.get('schema_validation', [])
-            for schema_config in schema_validations:
-                passed, failed, records = self._run_pandera_validation(schema_config, result)
-                total_validations += passed + failed
-                passed_validations += passed
-                failed_validations += failed
-                total_records_validated += records
-                
-                # Track per dataset
-                ds_name = schema_config.get('input_dataset', 'unknown')
-                if ds_name not in dataset_stats: dataset_stats[ds_name] = {'passed': 0, 'total': 0}
-                dataset_stats[ds_name]['passed'] += passed
-                dataset_stats[ds_name]['total'] += (passed + failed)
             
             # Validación de calidad con Great Expectations
             expectations = validation_config.get('expectations', [])
@@ -575,56 +557,6 @@ class PipelineExecutor:
                 }
             )
     
-    def _run_pandera_validation(self, validation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int, int]:
-        """Ejecutar validación con Pandera.
-        
-        Returns:
-            tuple: (validaciones_pasadas, validaciones_fallidas, registros_validados)
-        """
-        validation_name = validation_config.get('name', 'unnamed')
-        input_dataset = validation_config.get('input_dataset')
-        output_dataset = validation_config.get('output_dataset')
-        
-        if input_dataset not in self.datasets:
-            return (0, 0, 0)
-        
-        df = self.datasets[input_dataset]
-        record_count = len(df)
-        
-        try:
-            validator = PanderaValidator(validation_config.get('schema', {}))
-            validated_df, validation_result = validator.validate(df)
-            
-            # Guardar resultado
-            if output_dataset:
-                self.datasets[output_dataset] = validated_df
-            
-            # Registrar en auditoría
-            passed = validation_result.get('passed', False)
-            failed_count = validation_result.get('failed_count', 0)
-            
-            self.audit.log_validation_result(
-                execution_id=self.execution_id,
-                rule_name=validation_name,
-                rule_type="pandera_schema",
-                passed=passed,
-                failed_count=failed_count,
-                failure_details=validation_result.get('failures', []),
-                dataset_name=input_dataset,
-                total_records=record_count,
-                severity="error" if not passed else "info"
-            )
-            
-            # Retornar métricas
-            if passed:
-                return (1, 0, record_count)
-            else:
-                return (0, 1, record_count)
-            
-        except Exception as e:
-            result.errors.append(f"Pandera validation error in {validation_name}: {e}")
-            return (0, 1, record_count)
-    
     def _run_ge_validation(self, expectation_config: Dict[str, Any], result: ExecutionResult) -> tuple[int, int, int]:
         """Ejecutar validación con Great Expectations.
         
@@ -702,7 +634,6 @@ class PipelineExecutor:
         except Exception as e:
             logger.error(f"GE validation error in {suite_name}: {e}")
             result.errors.append(f"GE validation error in {suite_name}: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return (0, len(expectations_list), record_count)
     
@@ -802,12 +733,13 @@ class PipelineExecutor:
                 'quality_thresholds': quality_thresholds # Pasar thresholds al reporte
             }
             
+            report_path_target = self.reports_path / "validation_report.html"
+
             report_generator = HTMLReportGenerator()
             report_path = report_generator.generate_report(
                 monitoring_summary=monitoring_summary,
                 audit_data=audit_data,
-                include_stages=False,
-                report_type="technical"
+                output_path=report_path_target
             )
             return report_path
             
@@ -818,9 +750,13 @@ class PipelineExecutor:
     def _generate_executive_report(self, monitoring_summary: dict):
         """Generar reporte ejecutivo."""
         try:
+            # Use artifacts report path
+            report_path_target = self.reports_path / "executive_report.html"
+
             exec_generator = ExecutiveReportGenerator()
             exec_report_path = exec_generator.generate_report(
-                monitoring_summary=monitoring_summary
+                monitoring_summary=monitoring_summary,
+                output_path=report_path_target
             )
             logger.info(f"✓ Reporte Ejecutivo: {exec_report_path}")
             
@@ -862,7 +798,6 @@ class PipelineExecutor:
                         if not path:
                             raise ValueError(f"Output tipo '{output_type}' requiere 'path'")
                         
-                        from pathlib import Path
                         output_path = Path(path)
                         output_path.parent.mkdir(parents=True, exist_ok=True)
                         
@@ -885,8 +820,6 @@ class PipelineExecutor:
                         if not table:
                             raise ValueError("Output tipo 'postgres' requiere 'table'")
                         
-                        from sqlalchemy import create_engine, text, pool
-                        from src.modules.ingestion.config import POSTGRES_CONFIG
                         
                         db_url = f"postgresql://{POSTGRES_CONFIG['user']}:{POSTGRES_CONFIG['password']}@" \
                                  f"{POSTGRES_CONFIG['host']}:{POSTGRES_CONFIG['port']}/{POSTGRES_CONFIG['database']}"
@@ -920,7 +853,7 @@ class PipelineExecutor:
                         
                         except Exception as e:
                             logger.error(f"    Error guardando en PostgreSQL: {e}")
-                            import traceback
+                            
                             logger.error(traceback.format_exc())
                             raise
                         

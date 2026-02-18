@@ -20,6 +20,16 @@ pipeline:
   schedule: "@daily"
 
 # ============================================================================
+# QUALITY GATES & THRESHOLDS (Custom Overrides)
+# ============================================================================
+thresholds:
+  operational_healthy: 95.0
+  operational_warning: 80.0
+  quality_excellent: 95.0
+  quality_good: 75.0
+  quality_warning: 60.0
+
+# ============================================================================
 # STAGE 1: INGESTION
 # ============================================================================
 # Soporta múltiples fuentes: CSV, PostgreSQL, Parquet, JSON, Excel
@@ -66,8 +76,8 @@ ingestion:
 # ============================================================================
 # STAGE 2: VALIDATION
 # ============================================================================
-# Sistema DUAL de validación (automático según configuración):
-#   📦 PANDERA: Validación de esquemas (tipos, rangos, nullable)
+# Sistema de validación unificado (Great Expectations):
+#   📦 ESQUEMA: Tipos, rangos, nullable (convertido autom. a GE)
 #   ✅ GREAT EXPECTATIONS: Validación de calidad (patterns, business rules)
 #
 # Organización por categorías:

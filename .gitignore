@@ -39,6 +39,7 @@ docker-compose.override.yml
 
 # Reports (solo para desarrollo, no subir a Git)
 reports/**
+artifacts/**
 
 # Data (no subir datasets reales)
 data/**

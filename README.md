@@ -63,11 +63,6 @@ notepad .env  # Personalizar passwords
 # Verificar comando
 data-framework --help
 
-# Ejecutar primer pipeline
-data-framework run pipeline -c examples/pipelines/data_pipeline.yml
-
-# Ver reporte generado
-start reports\CustomerPipeline_*_executiveeline_*_executive.html
 ```
 
 ## Comandos CLI
@@ -93,19 +88,6 @@ Exporta métricas de auditoría a archivos CSV.
 ```bash
 data-framework export-logs -n <pipeline_name> [-o <output_dir>]
 ```
-
-**Salida:**
-```
-Exporting logs for pipeline: CustomerDataPipeline
-...
-✓ executions_summary: 15 rows
-✓ stages_performance: 60 rows
-...
-```
-
-**Casos de uso:**
-- Optimización de rendimiento
-- Análisis de tendencias de calidad
 
 ### infect
 
@@ -312,26 +294,31 @@ validation:
           type: email
           required: true
           unique: true
+      business_rules:
+        - type: percentage_in_category
+          column: status
+          category: "completed"
+          percentage: 0.80
+
 transformation:
-  steps:
-    - name: "filter_active"
-      dataset: "raw_customers"
-      output_dataset: "active_customers"
-      operations:
-        - type: "filter"
-          condition: "status == 'active'"
+  - input_dataset: "raw_customers"
+    output_dataset: "active_customers"
+    operations:
+      - type: "filter"
+        condition: "account_status == 'active'"
 
 outputs:
-  - name: "export_csv"
+  - name: "save_csv"
+    input_dataset: "active_customers"
     type: "csv"
-    dataset: "active_customers"
-    path: "data/output/customers_active.csv"
+    path: "data/output/active_customers.csv"
   
   - name: "save_postgres"
+    input_dataset: "active_customers"
     type: "postgres"
-    dataset: "active_customers"
-    table: "sample_data.customers_processed"
-    mode: "replace"
+    table: "active_customers"
+    schema: "processed_data"
+    if_exists: "replace"
 ```
 
 Ver [examples/pipelines/data_pipeline.yml](examples/pipelines/data_pipeline.yml) para ejemplo completo.
@@ -388,21 +375,6 @@ python scripts/utils_db.py clean-samples
 
 Ver [docs/DATABASE.md](docs/DATABASE.md) para referencia completa.
 
-## Rendimiento
-
-**Ejecución típica (10K registros):**
-- INGESTION: 0.3-0.6s
-- VALIDATION: 1.5-12s (80-95% del tiempo total)
-- TRANSFORMATION: 0.1-0.5s
-- OUTPUT: 0.2-0.5s
-
-**Huella de memoria:** <100MB
-
-**Optimización:**
-- Reducir cantidad de suites de validación para ejecución más rápida
-- Usar muestreo para datasets grandes
-- Habilitar modo batch para escrituras de auditoría
-- Indexar columnas de auditoría consultadas frecuentemente
 
 ## Estructura del Proyecto
 
@@ -427,6 +399,8 @@ data-pipeline-framework/
 ├── data/                           # Directorio de datos (state, logs, samples)
 ├── reports/                        # Reportes HTML generados
 ├── docker-compose.yml              # Servicios principales (PostgreSQL)
+├── docker-compose.airflow.yml      # Servicios principales (AirFlow)
+├── setup.ps1                       # Script de setup para Powershell
 └── requirements.txt                # Dependencias Python
 ```
 

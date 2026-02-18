@@ -12,7 +12,7 @@ Sistema de validación production-ready con 40+ tipos semánticos, patrones de s
 - Validación cross-field
 - Aplicación de reglas de negocio
 
-**Implementación:** Integraciones con Great Expectations + Pandera
+**Implementación:** Integraciones con Great Expectations
 
 ## Categorías de Validación
 

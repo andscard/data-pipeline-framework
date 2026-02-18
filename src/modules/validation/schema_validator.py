@@ -930,12 +930,17 @@ class SchemaValidator:
             end_col = validation.get('end_column')
             allow_equal = validation.get('allow_equal', True)
             
+            # Usamos row_condition que es universal en GE en lugar de expectativas experimentales
+            operator = ">=" if allow_equal else ">"
+            condition = f"{end_col} {operator} {start_col}"
+            
             expectations.append({
-                'expectation_type': 'expect_column_pair_values_A_to_be_greater_than_B',
-                'column_A': end_col,
-                'column_B': start_col,
-                'or_equal': allow_equal,
-                '_category': ValidationCategory.INTEGRITY.value
+                'expectation_type': 'expect_column_values_to_not_be_null',
+                'column': end_col,
+                'row_condition': condition,
+                'condition_parser': 'pandas',
+                '_category': ValidationCategory.INTEGRITY.value,
+                '_note': f"Integrity check: {condition}"
             })
         
         elif validation_type == 'conditional_required':

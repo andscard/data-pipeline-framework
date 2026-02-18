@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
+from src.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +21,9 @@ class ExecutiveReportGenerator:
         output_path: Optional[Path] = None
     ) -> Path:
         """Generar reporte ejecutivo HTML"""
-        if not output_path:
-            execution_id = monitoring_summary.get('execution_id', 'unknown')
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            pipeline_name = monitoring_summary.get('pipeline_name', 'Pipeline').replace(' ', '_')
-            
-            filename = f"{pipeline_name}_{timestamp}_executive.html"
-            output_path = Path("reports") / filename
-        
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         
         html_content = self._build_html(monitoring_summary)
+        print(f"{output_path}")
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -48,6 +41,7 @@ class ExecutiveReportGenerator:
         duration = monitoring.get('total_duration', 0)
         records = monitoring.get('total_records_processed', 0)
         stages = monitoring.get('stages', {})
+        thresholds = monitoring.get('thresholds', {})
         
         validation_stage = stages.get('VALIDATION', {})
         quality_score = validation_stage.get('quality_score', 0)
@@ -55,7 +49,7 @@ class ExecutiveReportGenerator:
         validations_failed = validation_stage.get('validations_failed', 0)
         
         status_class = self._get_status_class(health_status)
-        quality_status = self._get_quality_status(quality_score)
+        quality_status = self._get_quality_status(quality_score, thresholds)
         throughput = records / duration if duration > 0 else 0
         
         return f"""<!DOCTYPE html>
@@ -87,7 +81,7 @@ class ExecutiveReportGenerator:
             <div class="kpi">
                 <div class="kpi-label">Puntaje de Calidad</div>
                 <div class="kpi-value">{quality_score:.1f}%</div>
-                <div class="kpi-sub {self._get_quality_class(quality_score)}">{quality_status}</div>
+                <div class="kpi-sub {self._get_quality_class(quality_score, thresholds)}">{quality_status}</div>
             </div>
             <div class="kpi">
                 <div class="kpi-label">Registros</div>
@@ -499,14 +493,24 @@ class ExecutiveReportGenerator:
         elif status == 'warning': return 'warning'
         return 'critical'
     
-    def _get_quality_status(self, score: float) -> str:
-        if score >= 95: return 'Excelente'
-        elif score >= 85: return 'Bueno'
-        elif score >= 75: return 'Aceptable'
-        elif score >= 60: return 'Revisión'
+    def _get_quality_status(self, score: float, thresholds: Dict[str, float] = None) -> str:
+        thresholds = thresholds or {}
+        quality_excellent = thresholds.get('quality_excellent', Config.DEFAULT_QUALITY_EXCELLENT)
+        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
+        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+
+        print(f"Quality thresholds: excellent={quality_excellent}, good={quality_good}, warning={quality_warning}")
+        
+        if score >= quality_excellent: return 'Excelente'
+        elif score >= quality_good: return 'Bueno'
+        elif score >= quality_warning: return 'Aceptable'
         return 'Crítico'
     
-    def _get_quality_class(self, score: float) -> str:
-        if score >= 85: return 'success'
-        elif score >= 75: return 'warning'
+    def _get_quality_class(self, score: float, thresholds: Dict[str, float] = None) -> str:
+        thresholds = thresholds or {}
+        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
+        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+        
+        if score >= quality_good: return 'success'
+        elif score >= quality_warning: return 'warning'
         return 'error'

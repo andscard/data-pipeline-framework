@@ -4,18 +4,11 @@ DB Utils - Herramienta de gestión de base de datos del Data Pipeline Framework
 
 Este script proporciona comandos organizados para administrar y monitorear
 la base de datos del framework de manera eficiente.
-
-Categorías:
-  - INFO: Consultar información y estadísticas
-  - QUERY: Consultas específicas sobre ejecuciones y validaciones
-  - MAINTENANCE: Limpieza y mantenimiento de datos
-  - ADMIN: Operaciones administrativas
 """
+
 import sys
 from pathlib import Path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
+from collections import defaultdict
 from src.config import config
 from src.modules.ingestion.connectors.postgres_connector import create_postgres_connector
 from sqlalchemy import text
@@ -23,10 +16,8 @@ import argparse
 from datetime import datetime, timedelta
 from typing import Optional
 
-
-# ============================================
-# UTILIDADES DE CONEXIÓN
-# ============================================
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 def get_connection():
     """Obtener conexión a la base de datos"""
@@ -47,10 +38,6 @@ def get_connection():
     
     return connector
 
-
-# ============================================
-# CATEGORÍA: INFO - Información y estadísticas
-# ============================================
 
 def show_status():
     """Ver estado general de todas las tablas"""
@@ -247,8 +234,6 @@ def show_validations(status: Optional[str] = None, limit: int = 20):
             connector.close()
             return
         
-        # Agrupar por pipeline
-        from collections import defaultdict
         by_pipeline = defaultdict(list)
         for row in rows:
             by_pipeline[row.pipeline_name].append(row)
@@ -276,9 +261,7 @@ def show_validations(status: Optional[str] = None, limit: int = 20):
 
 def show_stats():
     """Mostrar estadísticas generales del framework"""
-    print("\n" + "="*80)
     print("  ESTADÍSTICAS DEL FRAMEWORK")
-    print("="*80)
     
     connector = get_connection()
     
@@ -339,17 +322,10 @@ def show_stats():
     connector.close()
 
 
-# ============================================
-# CATEGORÍA: MAINTENANCE - Limpieza y mantenimiento
-# ============================================
-
 def clean_sample_data():
     """Limpiar solo datos de ejemplo (sample_data schema)"""
-    print("\n" + "="*80)
     print("  LIMPIEZA DE DATOS DE EJEMPLO")
-    print("="*80)
     print("\n  [INFO] Esto eliminará solo sample_data.* (datos sintéticos)")
-    print("  [INFO] Las tablas pipeline.* NO se tocarán\n")
     
     response = input("  ¿Continuar? (y/n): ").strip().lower()
     if response not in ['y', 'yes', 's', 'si']:
@@ -376,81 +352,6 @@ def clean_sample_data():
     print("  [TIP] Regenera datos: python scripts/generate_sample_data.py -c 10000 -t 50000\n")
     
     connector.close()
-
-
-def clean_old_executions(days: int = 30):
-    """Limpiar ejecuciones antiguas (mantener auditoría reciente)"""
-    print("\n" + "="*80)
-    print(f"  LIMPIEZA DE EJECUCIONES ANTIGUAS (>{days} días)")
-    print("="*80)
-    
-    connector = get_connection()
-    
-    with connector.engine.connect() as conn:
-        # Contar ejecuciones a eliminar
-        count = conn.execute(text(f"""
-            SELECT COUNT(*) 
-            FROM pipeline.executions 
-            WHERE start_time < CURRENT_DATE - INTERVAL '{days} days'
-        """)).scalar()
-        
-        if count == 0:
-            print(f"\n  [INFO] No hay ejecuciones mayores a {days} días\n")
-            connector.close()
-            return
-        
-        print(f"\n  [INFO] Se eliminarán {count} ejecuciones antiguas")
-        print(f"  [INFO] Los registros de validaciones asociados también se eliminarán\n")
-        
-        response = input("  ¿Continuar? (y/n): ").strip().lower()
-        if response not in ['y', 'yes', 's', 'si']:
-            print("\n  [CANCEL] Operación cancelada\n")
-            connector.close()
-            return
-    
-    with connector.engine.begin() as conn:
-        conn.execute(text(f"""
-            DELETE FROM pipeline.executions 
-            WHERE start_time < CURRENT_DATE - INTERVAL '{days} days'
-        """))
-    
-    print(f"\n  [SUCCESS] {count} ejecuciones eliminadas")
-    print(f"  [INFO] Las ejecuciones recientes (<{days} días) se mantienen intactas\n")
-    
-    connector.close()
-
-
-def vacuum_database():
-    """Ejecutar VACUUM ANALYZE para optimizar la base de datos"""
-    print("\n" + "="*80)
-    print("  OPTIMIZACIÓN DE BASE DE DATOS")
-    print("="*80)
-    print("\n  [INFO] Ejecutando VACUUM ANALYZE en todas las tablas...")
-    print("  [INFO] Esto puede tardar unos momentos...\n")
-    
-    connector = get_connection()
-    
-    # VACUUM requiere autocommit
-    with connector.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        schemas = ['pipeline', 'sample_data']
-        
-        for schema in schemas:
-            tables = conn.execute(text(f"""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema='{schema}'
-            """)).fetchall()
-            
-            print(f"  Schema: {schema}")
-            for table in tables:
-                table_name = table[0]
-                conn.execute(text(f"VACUUM ANALYZE {schema}.{table_name}"))
-                print(f"    [OK] {schema}.{table_name}")
-            print()
-    
-    print("  [SUCCESS] Optimización completada\n")
-    connector.close()
-
 
 # ============================================
 # FUNCIÓN PRINCIPAL
@@ -516,10 +417,6 @@ EJEMPLOS:
         # MAINTENANCE commands
         elif args.command == 'clean-samples':
             clean_sample_data()
-        elif args.command == 'clean-old':
-            clean_old_executions(days=args.days)
-        elif args.command == 'vacuum':
-            vacuum_database()
             
     except KeyboardInterrupt:
         print("\n\n  [CANCEL] Operación cancelada por el usuario\n")

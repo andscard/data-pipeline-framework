@@ -7,5 +7,7 @@ Este módulo genera reportes HTML profesionales combinando:
 """
 
 from .html_generator import HTMLReportGenerator
+from .executive_report import ExecutiveReportGenerator
 
-__all__ = ['HTMLReportGenerator']
+__all__ = ['HTMLReportGenerator', 
+           'ExecutiveReportGenerator']

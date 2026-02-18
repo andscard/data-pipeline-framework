@@ -60,8 +60,6 @@ Execution completed
   Quality Score: 91.11%
   Records Processed: 9,500
   Records Failed: 500
-  Report: reports/execution_a1b2c3d4_20260210_153045.html
-  Executive Report: reports/execution_a1b2c3d4_20260210_153045_summary.html
 ================================================================================
 ```
 

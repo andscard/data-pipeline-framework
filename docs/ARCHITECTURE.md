@@ -65,7 +65,6 @@ Sistema de validación production-ready:
 
 Implementación:
 - `ge_validator.py`: Integración con Great Expectations
-- `pandera_validator.py`: Validación de schema
 
 ### 4. Transformation Module
 **Path:** `src/modules/transformation/`
