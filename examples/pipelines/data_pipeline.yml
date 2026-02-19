@@ -23,11 +23,8 @@ pipeline:
 # QUALITY GATES & THRESHOLDS (Custom Overrides)
 # ============================================================================
 thresholds:
-  operational_healthy: 95.0
-  operational_warning: 80.0
-  quality_excellent: 95.0
-  quality_good: 75.0
-  quality_warning: 60.0
+  operational_healthy: 95
+  operational_warning: 80
 
 # ============================================================================
 # STAGE 1: INGESTION

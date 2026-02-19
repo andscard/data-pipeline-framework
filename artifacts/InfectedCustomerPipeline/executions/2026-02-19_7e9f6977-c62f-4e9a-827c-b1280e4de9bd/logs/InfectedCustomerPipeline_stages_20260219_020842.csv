@@ -1,0 +1,3 @@
+execution_id,execution_date,execution_status,stage_name,stage_order,stage_status,duration_seconds,records_in,records_out,records_failed,success_rate_pct,memory_usage_mb,cpu_usage_percent,error_count,warning_count,quality_score,validations_passed,validations_failed
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,INGESTION,1,completed,0.692,0,62500,0,,,,0,0,,,
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,VALIDATION,2,running,,0,0,0,,,,0,0,,,

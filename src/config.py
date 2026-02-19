@@ -34,17 +34,8 @@ class Config:
     # QUALITY & HEALTH THRESHOLDS (DEFAULTS)
     # ------------------------------------------------------------------------
     # Estos valores se usan como fallback si no se definen en el YAML del pipeline.
-    
-    # Umbrales de Salud Operativa (% de registros procesados exitosamente)
-    # Puede ser sobrescrito en pipeline.yml bajo la sección 'thresholds'
-    DEFAULT_HEALTH_OPERATIONAL_HEALTHY = 95.0
-    DEFAULT_HEALTH_OPERATIONAL_WARNING = 80.0
-    
-    # Umbrales de Calidad de Datos (% de reglas de validación pasadas)
-    # Puede ser sobrescrito en pipeline.yml bajo la sección 'thresholds'
-    DEFAULT_QUALITY_EXCELLENT = 90.0
-    DEFAULT_QUALITY_GOOD = 70.0  
-    DEFAULT_QUALITY_WARNING = 50.0  # Debajo de esto es POOR/CRITICAL
+    DEFAULT_HEALTH_OPERATIONAL_HEALTHY = 95
+    DEFAULT_HEALTH_OPERATIONAL_WARNING = 80
 
     # Validar que todas las variables requeridas estén presentes
     _missing_vars = []

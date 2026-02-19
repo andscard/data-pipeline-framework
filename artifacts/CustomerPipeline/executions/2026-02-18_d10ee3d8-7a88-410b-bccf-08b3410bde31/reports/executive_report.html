@@ -1,120 +1,11 @@
-"""
-Executive Report Generator - Reporte Gerencial Corporativo
-Diseño profesional y sobrio para stakeholders ejecutivos
-"""
-
-import logging
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, Optional
-from src.config import Config
-
-logger = logging.getLogger(__name__)
-
-
-class ExecutiveReportGenerator:
-    """Generador de reportes ejecutivos corporativos"""
-    
-    def generate_report(
-        self,
-        monitoring_summary: Dict[str, Any],
-        output_path: Optional[Path] = None
-    ) -> Path:
-        """Generar reporte ejecutivo HTML"""
-        
-        html_content = self._build_html(monitoring_summary)
-        print(f"{output_path}")
-        
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        
-        logger.info(f"✓ Reporte Ejecutivo generado: {output_path}")
-        return output_path
-    
-    def _build_html(self, monitoring: Dict[str, Any]) -> str:
-        """Construir HTML del reporte ejecutivo"""
-        execution_id = monitoring.get('execution_id', 'N/A')[:8]
-        pipeline_name = monitoring.get('pipeline_name', 'Pipeline')
-        start_time = monitoring.get('start_time', 'N/A')
-        
-        health_status = self._get_status_class(monitoring.get('health_status', 'unknown'))
-        health_status_text = monitoring.get('health_status')
-        duration = monitoring.get('total_duration', 0)
-        records = monitoring.get('total_records_processed', 0)
-        stages = monitoring.get('stages', {})
-        
-        validation_stage = stages.get('VALIDATION', {})
-        quality_score = validation_stage.get('quality_score', 0)
-        validations_passed = validation_stage.get('validations_passed', 0)
-        validations_failed = validation_stage.get('validations_failed', 0)
-        throughput = records / duration if duration > 0 else 0
-        
-        return f"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reporte Ejecutivo - {pipeline_name}</title>
+    <title>Reporte Ejecutivo - CustomerPipeline</title>
     <style>
-{self._get_css()}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header class="header">
-            <div class="header-left">
-                <div class="logo">📊</div>
-                <div>
-                    <h1>Reporte de Ejecución del Pipeline</h1>
-                    <p>{pipeline_name} • {start_time[:19]}</p>
-                </div>
-            </div>
-            <div class="header-right">
-                <span class="badge {health_status_text}">{health_status.upper()}</span>
-            </div>
-        </header>
-        
-        <section class="kpis">
-            <div class="kpi">
-                <div class="kpi-label">Puntaje de Calidad</div>
-                <div class="kpi-value">{quality_score:.1f}%</div>
-            </div>
-            <div class="kpi">
-                <div class="kpi-label">Registros</div>
-                <div class="kpi-value">{records:,}</div>
-                <div class="kpi-sub">{duration:.1f}s total</div>
-            </div>
-            <div class="kpi">
-                <div class="kpi-label">Rendimiento</div>
-                <div class="kpi-value">{throughput:,.0f}</div>
-                <div class="kpi-sub">reg/seg</div>
-            </div>
-            <div class="kpi">
-                <div class="kpi-label">Validaciones</div>
-                <div class="kpi-value">{validations_passed}/{validations_passed + validations_failed}</div>
-                <div class="kpi-sub {'error' if validations_failed > 0 else 'success'}">{validations_failed} fallidas</div>
-            </div>
-        </section>
-        
-        <section class="flow">
-            <h2>Flujo del Pipeline</h2>
-            {self._render_flow(stages)}
-        </section>
-        
-        <section class="metrics">
-            <h2>Métricas de Rendimiento</h2>
-            {self._render_metrics_table(stages, monitoring)}
-        </section>
-        
-        <footer class="footer">
-            <p>Data Pipeline Framework • ID de Ejecución: {execution_id} • Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        </footer>
-    </div>
-</body>
-</html>"""
-    
-    def _get_css(self) -> str:
-        return """
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
@@ -336,56 +227,114 @@ class ExecutiveReportGenerator:
             .arrow { display: none; }
             .summary-cards { grid-template-columns: 1fr; }
         }
-        """
-    
-    def _render_flow(self, stages: dict) -> str:
-        stage_order = ['INGESTION', 'VALIDATION', 'TRANSFORMATION', 'OUTPUT']
-        icons = {'INGESTION': '📥', 'VALIDATION': '✓', 'TRANSFORMATION': '⚙️', 'OUTPUT': '📤'}
         
-        html = ['<div class="flow-viz">']
-        for i, name in enumerate(stage_order):
-            if name not in stages:
-                continue
-            data = stages[name]
-            duration = data.get('duration_seconds', 0)
-            records = data.get('records_output', 0)
-            
-            html.append(f"""
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">📊</div>
+                <div>
+                    <h1>Reporte de Ejecución del Pipeline</h1>
+                    <p>CustomerPipeline • 2026-02-18T20:00:37</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <span class="badge healthy">SUPERADO</span>
+            </div>
+        </header>
+        
+        <section class="kpis">
+            <div class="kpi">
+                <div class="kpi-label">Puntaje de Calidad</div>
+                <div class="kpi-value">94.9%</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Registros</div>
+                <div class="kpi-value">60,000</div>
+                <div class="kpi-sub">22.9s total</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Rendimiento</div>
+                <div class="kpi-value">2,626</div>
+                <div class="kpi-sub">reg/seg</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Validaciones</div>
+                <div class="kpi-value">74/78</div>
+                <div class="kpi-sub error">4 fallidas</div>
+            </div>
+        </section>
+        
+        <section class="flow">
+            <h2>Flujo del Pipeline</h2>
+            <div class="flow-viz">
             <div class="stage">
-                <div class="stage-icon">{icons.get(name, '•')}</div>
-                <div class="stage-name">{name}</div>
+                <div class="stage-icon">📥</div>
+                <div class="stage-name">INGESTION</div>
                 <div class="stage-stats">
                     <div class="stage-stat">
-                        <span class="stage-stat-value">{records:,}</span>
+                        <span class="stage-stat-value">60,000</span>
                         <span>registros</span>
                     </div>
                     <div class="stage-stat">
-                        <span class="stage-stat-value">{duration:.1f}s</span>
+                        <span class="stage-stat-value">0.4s</span>
                         <span>duración</span>
                     </div>
                 </div>
             </div>
-            """)
+            <div class="arrow">→</div>
+            <div class="stage">
+                <div class="stage-icon">✓</div>
+                <div class="stage-name">VALIDATION</div>
+                <div class="stage-stats">
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">60,000</span>
+                        <span>registros</span>
+                    </div>
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">16.2s</span>
+                        <span>duración</span>
+                    </div>
+                </div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="stage">
+                <div class="stage-icon">⚙️</div>
+                <div class="stage-name">TRANSFORMATION</div>
+                <div class="stage-stats">
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">58,358</span>
+                        <span>registros</span>
+                    </div>
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">0.1s</span>
+                        <span>duración</span>
+                    </div>
+                </div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="stage">
+                <div class="stage-icon">📤</div>
+                <div class="stage-name">OUTPUT</div>
+                <div class="stage-stats">
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">66,313</span>
+                        <span>registros</span>
+                    </div>
+                    <div class="stage-stat">
+                        <span class="stage-stat-value">6.1s</span>
+                        <span>duración</span>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </section>
+        
+        <section class="metrics">
+            <h2>Métricas de Rendimiento</h2>
             
-            if i < len([s for s in stage_order if s in stages]) - 1:
-                html.append('<div class="arrow">→</div>')
-        
-        html.append('</div>')
-        return ''.join(html)
-    
-    def _render_metrics_table(self, stages: dict, monitoring: dict) -> str:
-        validation_stage = stages.get('VALIDATION', {})
-        quality_score = validation_stage.get('quality_score', 0)
-        passed = validation_stage.get('validations_passed', 0)
-        failed = validation_stage.get('validations_failed', 0)
-        
-        duration = monitoring.get('total_duration', 0)
-        records = monitoring.get('total_records_processed', 0)
-        throughput = records / duration if duration > 0 else 0
-        
-        slowest = max(stages.items(), key=lambda x: x[1].get('duration_seconds', 0)) if stages else ('N/A', {})
-        
-        return f"""
         <table class="metrics-table">
             <tr>
                 <th>Métrica</th>
@@ -394,29 +343,31 @@ class ExecutiveReportGenerator:
             </tr>
             <tr>
                 <td><strong>Calidad de Datos</strong></td>
-                <td>{quality_score:.1f}%</td>
-                <td>{passed} de {passed + failed} validaciones exitosas ({failed} fallidas)</td>
+                <td>94.9%</td>
+                <td>74 de 78 validaciones exitosas (4 fallidas)</td>
             </tr>
             <tr>
                 <td><strong>Velocidad de Procesamiento</strong></td>
-                <td>{throughput:,.0f} reg/s</td>
-                <td>Procesados {records:,} registros en {duration:.2f} segundos</td>
+                <td>2,626 reg/s</td>
+                <td>Procesados 60,000 registros en 22.85 segundos</td>
             </tr>
             <tr>
                 <td><strong>Eficiencia del Pipeline</strong></td>
-                <td>{len(stages)} etapas</td>
+                <td>4 etapas</td>
                 <td>Todas las etapas completadas exitosamente</td>
             </tr>
             <tr>
                 <td><strong>Cuello de Botella</strong></td>
-                <td>{slowest[0]}</td>
-                <td>La etapa más lenta tomó {slowest[1].get('duration_seconds', 0):.2f}s</td>
+                <td>VALIDATION</td>
+                <td>La etapa más lenta tomó 16.20s</td>
             </tr>
         </table>
-        """
-    
-    def _get_status_class(self, status: str) -> str:
-        status = status.lower()
-        if status == 'healthy': return 'superado'
-        elif status == 'warning': return 'en riesgo'
-        return 'no alcanzado'
+        
+        </section>
+        
+        <footer class="footer">
+            <p>Data Pipeline Framework • ID de Ejecución: d10ee3d8 • Generado: 2026-02-18 20:01:00</p>
+        </footer>
+    </div>
+</body>
+</html>

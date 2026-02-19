@@ -289,8 +289,7 @@ class MonitoringCollector:
         try:
             yield stage
             if stage_name == "VALIDATION" and stage.quality_score is not None:
-                # Use custom threshold if available, else default to Config
-                min_score = self.metrics.thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+                min_score = self.metrics.thresholds.get('operational_warning', Config.DEFAULT_HEALTH_OPERATIONAL_WARNING)
                 success = stage.quality_score >= min_score
             else:
                 success = True

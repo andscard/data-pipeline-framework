@@ -1,0 +1,2 @@
+execution_id,execution_date,status,total_errors,total_warnings,execution_error,stage_name,stage_errors,stage_warnings,stage_error_details
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"

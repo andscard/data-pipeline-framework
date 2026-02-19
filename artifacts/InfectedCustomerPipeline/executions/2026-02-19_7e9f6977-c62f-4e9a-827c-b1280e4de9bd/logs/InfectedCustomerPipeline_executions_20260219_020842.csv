@@ -1,0 +1,2 @@
+execution_id,pipeline_name,status,execution_type,triggered_by,environment,start_time,end_time,duration_seconds,records_processed,records_failed,quality_score,health_status,total_errors,total_warnings,report_path,executive_report_path
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,InfectedCustomerPipeline,running,manual,,development,2026-02-19 02:08:08,,,0,0,,,0,0,,

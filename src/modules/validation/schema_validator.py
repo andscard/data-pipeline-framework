@@ -738,8 +738,6 @@ class SchemaValidator:
         # GENERAR EXPECTATIONS
         # ============================================================================
         
-        # CRITICAL: GE deduplica expectativas del mismo tipo en la misma columna
-        # SOLUCIÓN: Combinar TODOS los patterns de seguridad en UN SOLO regex
         security_patterns = []
         security_check_names = []
         has_case_insensitive = False
@@ -748,8 +746,6 @@ class SchemaValidator:
             if check in DataTypeRegistry.PATTERNS:
                 pattern = DataTypeRegistry.PATTERNS[check]
                 
-                # Remover flags inline (?i) para evitar warnings de pandas
-                # Moveremos todos los flags al inicio del combined pattern
                 if pattern.startswith('(?i)'):
                     pattern = pattern[4:]  # Remover '(?i)'
                     has_case_insensitive = True
@@ -757,12 +753,9 @@ class SchemaValidator:
                 security_patterns.append(pattern)
                 security_check_names.append(check)
         
-        # Si hay patterns de seguridad, crear UNA SOLA expectativa con todos combinados
         if security_patterns:
-            # Combinar patterns con alternación (|) y wrap each en grupo non-capturing
             combined_pattern = '|'.join(f'(?:{pattern})' for pattern in security_patterns)
             
-            # Si CUALQUIER pattern original tenía (?i), aplicarlo al inicio del combined pattern
             if has_case_insensitive:
                 combined_pattern = '(?i)' + combined_pattern
             
@@ -865,7 +858,6 @@ class SchemaValidator:
         # PCI-DSS: No debe haber números de tarjeta sin cifrar
         if compliance == 'PCI-DSS' or col_config.get('pci_dss_check'):
             if not col_config.get('encrypted', type_def.get('should_be_encrypted', False)):
-                # Advertir que debería estar cifrado
                 expectations.append({
                     'expectation_type': 'expect_column_values_to_not_match_regex',
                     'column': col_name,
@@ -890,7 +882,6 @@ class SchemaValidator:
                 '_severity': ValidationSeverity.ERROR.value
             })
         
-        # HIPAA: Medical record numbers
         if compliance == 'HIPAA' or col_config.get('hipaa_check'):
             expectations.append({
                 'expectation_type': 'expect_column_values_to_not_match_regex',
@@ -899,7 +890,6 @@ class SchemaValidator:
                 '_category': ValidationCategory.COMPLIANCE.value
             })
         
-        # SOC2: No debug information leakage
         if col_config.get('soc2_check'):
             expectations.extend([
                 {
@@ -1037,7 +1027,6 @@ class SchemaValidator:
             })
         
         elif rule_type == 'value_range_by_condition':
-            # Si condición, entonces valor en rango
             column = rule.get('column')
             condition = rule.get('condition')
             min_val = rule.get('min_value')
@@ -1058,7 +1047,6 @@ class SchemaValidator:
             expectations.append(exp)
         
         elif rule_type == 'trend_monotonic':
-            # Columna debe ser monotónicamente creciente/decreciente
             column = rule.get('column')
             direction = rule.get('direction', 'increasing')  # increasing | decreasing
             allow_equal = rule.get('allow_equal', True)

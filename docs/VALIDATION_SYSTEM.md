@@ -18,19 +18,6 @@ Sistema de validación production-ready con 40+ tipos semánticos, patrones de s
 
 El sistema permite definir umbrales de calidad personalizados por pipeline en el archivo de configuración `pipeline.yml`. Esto permite ajustar la rigurosidad de las validaciones según la importancia del proceso.
 
-### Estructura
-
-```yaml
-validation:
-  quality_thresholds:
-    completeness: 0.98    # (Default: 0.95) Porcentaje mínimo de completitud
-    uniqueness: 1.0       # (Default: 1.0) Porcentaje mínimo de unicidad
-    consistency: 0.90     # (Default: 0.90) Porcentaje mínimo de consistencia
-    validity: 0.95        # (Default: 0.95) Porcentaje general de validez
-```
-
-Si no se definen, el sistema utilizará los valores por defecto del framework.
-
 ## Categorías de Validación
 
 ### 1. Identificadores

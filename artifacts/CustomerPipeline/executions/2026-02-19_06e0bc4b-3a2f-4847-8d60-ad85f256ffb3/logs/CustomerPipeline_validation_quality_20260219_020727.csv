@@ -1,0 +1,6 @@
+execution_id,execution_date,execution_status,overall_quality_score,suite_name,dataset_name,total_validations,passed_validations,failed_validations,suite_quality_score,total_records,execution_time_ms,failure_rate_pct
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,,02_Tipos_y_Formatos,raw_customers,17,17,0,100.00,10000,,0.00
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,,03_Calidad_de_Datos,raw_customers,15,14,1,93.33,10000,,6.67
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,,04_Seguridad_OWASP,raw_customers,10,10,0,100.00,10000,,0.00
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,,05_Integridad_Referencial,raw_customers,1,1,0,100.00,10000,,0.00
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,completed,,06_Reglas_de_Negocio,raw_customers,3,2,1,66.67,10000,,33.33

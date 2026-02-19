@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de Validación de Calidad de Datos - 06e0bc4b</title>
+    <style>
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 40px auto;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        
+        /* Header */
+        .header {
+            background: #1a1a2e;
+            color: white;
+            padding: 30px 40px;
+            border-bottom: 3px solid #0f3460;
+        }
+        
+        .header h1 {
+            font-size: 1.8em;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .header-meta {
+            display: flex;
+            gap: 30px;
+            font-size: 0.9em;
+            color: #cbd5e0;
+        }
+        
+        /* Sections */
+        section {
+            padding: 40px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        section:last-of-type {
+            border-bottom: none;
+        }
+        
+        section h2 {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #0f3460;
+        }
+        
+        /* Summary Grid */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .summary-card {
+            padding: 25px;
+            background: #f8f9fa;
+            border-left: 4px solid #0f3460;
+            border-radius: 4px;
+        }
+        
+        .card-label {
+            font-size: 0.85em;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .card-value {
+            font-size: 2em;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.75em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-healthy {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-critical {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .operational-healthy { color: #28a745; }
+        .operational-warning { color: #ffc107; }
+        .operational-poor { color: #dc3545; }
+        
+        /* Validation Overview */
+        .validation-overview {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .validation-stat {
+            text-align: center;
+        }
+        
+        .stat-number {
+            display: block;
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+        
+        .stat-label {
+            display: block;
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .validation-stat.success .stat-number {
+            color: #28a745;
+        }
+        
+        .validation-stat.failed .stat-number {
+            color: #dc3545;
+        }
+        
+        .validation-stat.total .stat-number {
+            color: #0f3460;
+        }
+        
+        /* Suites Table */
+        .suites-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            background: white;
+            border: 1px solid #dee2e6;
+        }
+        
+        .suites-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            font-size: 0.9em;
+        }
+        
+        .suites-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .suites-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .suites-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .suite-name {
+            font-weight: 500;
+            color: #1a1a2e;
+        }
+        
+        .suite-type {
+            display: inline-block;
+            padding: 3px 10px;
+            background: #e9ecef;
+            border-radius: 3px;
+            font-size: 0.8em;
+            color: #495057;
+        }
+        
+        /* Failures Table */
+        .failures-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .failures-table thead {
+            background: #1a1a2e;
+            color: white;
+        }
+        
+        .failures-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .failures-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .failures-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .failures-table code {
+            background: #f8f9fa;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #495057;
+        }
+        
+        .severity-critical {
+            background: #ffe5e5 !important;
+        }
+        
+        .severity-high {
+            background: #fff5e5 !important;
+        }
+        
+        .severity-medium {
+            background: #ffffeb !important;
+        }
+        
+        .severity-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .severity-indicator.critical {
+            background: #dc3545;
+        }
+        
+        .severity-indicator.high {
+            background: #fd7e14;
+        }
+        
+        .severity-indicator.medium {
+            background: #ffc107;
+        }
+        
+        /* Stages Table */
+        .stages-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stages-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            font-size: 0.9em;
+        }
+        
+        .stages-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .stages-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .stage-name {
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        
+        /* Footer */
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9em;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+            }
+            
+            section {
+                padding: 20px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header-meta {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Reporte de Validación de Calidad de Datos</h1>
+                <div class="header-meta">
+                    <span><strong>Pipeline:</strong> CustomerPipeline</span>
+                    <span><strong>ID Ejecución:</strong> 06e0bc4b</span>
+                    <span><strong>Fecha:</strong> 2026-02-19T02:06:48.675218</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Executive Summary -->
+        <section class="summary">
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="card-label">Estado</div>
+                    <div class="card-value"><span class="status-badge status-healthy">SUPERADO</span></div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Duración</div>
+                    <div class="card-value">9.00s</div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Registros Procesados</div>
+                    <div class="card-value">10,000</div>
+                    <div style="font-size: 0.75em; color: #6c757d; margin-top: 5px;">Total registros únicos</div>
+                </div>
+                <div class="summary-card">
+                    <div class="card-label">Puntaje de Calidad</div>
+                    <div class="card-value operational-healthy">95.7%</div>
+                </div>
+            </div>
+            
+            <!-- Data Flow Summary-->
+            
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 15px; color: #1a1a2e;">Flujo de Datos del Pipeline</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    
+                <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 1.5em; margin-bottom: 5px;">📥</div>
+                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">INGESTA</div>
+                    <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">10,000</div>
+                    <div style="font-size: 0.7em; color: #6c757d;">registros</div>
+                </div>
+                
+                <div style="text-align: center; padding: 15px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 1.5em; margin-bottom: 5px;">✓</div>
+                    <div style="font-size: 0.75em; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">VALIDACIÓN</div>
+                    <div style="font-size: 1.3em; font-weight: 600; color: #0f3460;">10,000</div>
+                    <div style="font-size: 0.7em; color: #6c757d;">registros</div>
+                </div>
+                
+                </div>
+            </div>
+        
+        </section>
+        
+        <!-- Validation Results -->
+        <section class="validation-section">
+            <h2>Resultados de Validación</h2>
+            <div class="validation-overview">
+                <div class="validation-stat success">
+                    <span class="stat-number">44</span>
+                    <span class="stat-label">Pasados</span>
+                </div>
+                <div class="validation-stat failed">
+                    <span class="stat-number">2</span>
+                    <span class="stat-label">Fallidos</span>
+                </div>
+                <div class="validation-stat total">
+                    <span class="stat-number">46</span>
+                    <span class="stat-label">Total</span>
+                </div>
+            </div>
+            
+            
+        <div style="margin-bottom: 30px;">
+            <h3>Tarjetas de Puntuación de Calidad del Dataset</h3>
+            <table class="suites-table">
+                <thead>
+                    <tr>
+                        <th>Dataset</th>
+                        <th style="text-align:center;">Pasados</th>
+                        <th style="text-align:center;">Fallidos</th>
+                        <th style="text-align:center;">Total Verificaciones</th>
+                        <th style="text-align:center;">Puntaje Actual</th>
+                        <th style="text-align:center;">Puntaje Objetivo</th>
+                        <th style="text-align:center;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+            <tr>
+                <td style="font-weight:600;">raw_customers</td>
+                <td style="text-align:center;">44</td>
+                <td style="text-align:center;">2</td>
+                <td style="text-align:center;">46</td>
+                <td style="text-align:center;">
+                    <span style="color:#28a745; font-weight:bold;">95.7%</span>
+                </td>
+                <td style="text-align:center; color:#6c757d;">90.0%</td>
+                <td style="text-align:center;">
+                    <span class="status-badge status-healthy">SUPERADO</span>
+                </td>
+            </tr>
+            
+                </tbody>
+            </table>
+        </div>
+        
+
+            <h3 style="margin-top: 30px; margin-bottom: 20px;">Desglose Detallado por Suite</h3>
+            
+        <table class="suites-table">
+            <thead>
+                <tr>
+                    <th>Nombre de Suite</th>
+                    <th>Tipo</th>
+                    <th style="text-align: center;">Pasadas</th>
+                    <th style="text-align: center;">Fallidas</th>
+                    <th style="text-align: center;">Total</th>
+                    <th style="text-align: center;">Tasa de Éxito</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+            <tr>
+                <td><span class="suite-name">02_Tipos_y_Formatos <span style='color:#6c757d; font-size:0.85em'>(raw_customers)</span></span></td>
+                <td><span class="suite-type">great_expectations</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">17</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">0</td>
+                <td style="text-align: center; font-weight: 600;">17</td>
+                <td style="text-align: center;">
+                   <span style="color: #28a745; font-weight: bold;">100.0%</span>
+                </td>
+            </tr>
+            
+            <tr>
+                <td><span class="suite-name">03_Calidad_de_Datos <span style='color:#6c757d; font-size:0.85em'>(raw_customers)</span></span></td>
+                <td><span class="suite-type">great_expectations</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">14</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">1</td>
+                <td style="text-align: center; font-weight: 600;">15</td>
+                <td style="text-align: center;">
+                   <span style="color: #dc3545; font-weight: bold;">93.3%</span>
+                </td>
+            </tr>
+            
+            <tr>
+                <td><span class="suite-name">04_Seguridad_OWASP <span style='color:#6c757d; font-size:0.85em'>(raw_customers)</span></span></td>
+                <td><span class="suite-type">great_expectations</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">10</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">0</td>
+                <td style="text-align: center; font-weight: 600;">10</td>
+                <td style="text-align: center;">
+                   <span style="color: #28a745; font-weight: bold;">100.0%</span>
+                </td>
+            </tr>
+            
+            <tr>
+                <td><span class="suite-name">05_Integridad_Referencial <span style='color:#6c757d; font-size:0.85em'>(raw_customers)</span></span></td>
+                <td><span class="suite-type">great_expectations</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">1</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">0</td>
+                <td style="text-align: center; font-weight: 600;">1</td>
+                <td style="text-align: center;">
+                   <span style="color: #28a745; font-weight: bold;">100.0%</span>
+                </td>
+            </tr>
+            
+            <tr>
+                <td><span class="suite-name">06_Reglas_de_Negocio <span style='color:#6c757d; font-size:0.85em'>(raw_customers)</span></span></td>
+                <td><span class="suite-type">great_expectations</span></td>
+                <td style="text-align: center; color: #28a745; font-weight: 600;">2</td>
+                <td style="text-align: center; color: #dc3545; font-weight: 600;">1</td>
+                <td style="text-align: center; font-weight: 600;">3</td>
+                <td style="text-align: center;">
+                   <span style="color: #dc3545; font-weight: bold;">66.7%</span>
+                </td>
+            </tr>
+            
+            </tbody>
+        </table>
+        
+
+            
+        <div style="margin-top: 40px;">
+            <h3 style="color: #343a40; font-size: 1.2em; margin-bottom: 15px;">
+                Detalle de Validaciones Fallidas
+            </h3>
+            <table style="width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                
+            <tr class="group-header" onclick="toggleGroup('group_1')" style="background: #e9ecef; cursor: pointer; border-bottom: 2px solid #dee2e6;">
+                <td colspan="5" style="padding: 12px 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 1.1em; font-weight: bold; color: #343a40;">03_Calidad_de_Datos</span>
+                            <span style="margin-left: 10px; font-size: 0.9em; color: #6c757d; font-family: monospace;">raw_customers</span>
+                        </div>
+                        <div>
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">1 fallos</span>
+                            <span style="margin-left: 10px; font-size: 0.8em; color: #6c757d;">▼</span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            
+            <tr class="detail-row group_1" style="display: none; background: #f8f9fa;">
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;"></th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Columna</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Detalle del Error</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:center;">Severidad</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:right;">Registros</th>
+            </tr>
+            
+                    <tr class="detail-row group_1" style="display: none; background: white; border-bottom: 1px solid #f1f2f3;">
+                        <td style="width: 20px; border-left: 4px solid #fd7e14;"></td>
+                        <td style="padding: 10px 15px; width: 20%;">
+                            <code style="color: #e83e8c;">email</code>
+                        </td>
+                        <td style="padding: 10px 15px;">Valores duplicados encontrados (la columna debe ser única).<br><span style='color:#dc3545; font-size:0.85em'>Valores encontrados: 'agustin39@example.org', 'eesteban@example.net', 'ibatlle@example.org'...</span></td>
+                        <td style="padding: 10px 15px; text-align: center;">
+                            <span style="color: #fd7e14; font-weight: bold; font-size: 0.8em;">ERROR</span>
+                        </td>
+                        <td style="padding: 10px 15px; text-align: right; font-family: monospace;">82 / 10,000</td>
+                    </tr>
+                    
+            <tr class="group-header" onclick="toggleGroup('group_2')" style="background: #e9ecef; cursor: pointer; border-bottom: 2px solid #dee2e6;">
+                <td colspan="5" style="padding: 12px 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 1.1em; font-weight: bold; color: #343a40;">06_Reglas_de_Negocio</span>
+                            <span style="margin-left: 10px; font-size: 0.9em; color: #6c757d; font-family: monospace;">raw_customers</span>
+                        </div>
+                        <div>
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">1 fallos</span>
+                            <span style="margin-left: 10px; font-size: 0.8em; color: #6c757d;">▼</span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            
+            <tr class="detail-row group_2" style="display: none; background: #f8f9fa;">
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;"></th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Columna</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6;">Detalle del Error</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:center;">Severidad</th>
+               <th style="padding: 8px 15px; font-size:0.85em; color: #6c757d; border-bottom: 1px solid #dee2e6; text-align:right;">Registros</th>
+            </tr>
+            
+                    <tr class="detail-row group_2" style="display: none; background: white; border-bottom: 1px solid #f1f2f3;">
+                        <td style="width: 20px; border-left: 4px solid #fd7e14;"></td>
+                        <td style="padding: 10px 15px; width: 20%;">
+                            <code style="color: #e83e8c;">account_status</code>
+                        </td>
+                        <td style="padding: 10px 15px;">Distribución insuficiente. Se esperaba que al menos el 85% de los registros fueran: [&#x27;active&#x27;]<br><span style='color:#dc3545; font-size:0.85em'>Valores encontrados: 'suspended', 'inactive', 'inactive'...</span></td>
+                        <td style="padding: 10px 15px; text-align: center;">
+                            <span style="color: #fd7e14; font-weight: bold; font-size: 0.8em;">ERROR</span>
+                        </td>
+                        <td style="padding: 10px 15px; text-align: right; font-family: monospace;">2,045 / 10,000</td>
+                    </tr>
+                    
+            </table>
+            
+            <script>
+            function toggleGroup(groupId) {
+                var rows = document.getElementsByClassName(groupId);
+                for(var i = 0; i < rows.length; i++) {
+                    rows[i].style.display = rows[i].style.display === 'none' ? 'table-row' : 'none';
+                }
+            }
+            </script>
+        </div>
+        
+        </section>
+        
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Data Pipeline Framework • Generado: 2026-02-19 02:06:57</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+execution_id,execution_date,execution_status,overall_quality_score,suite_name,dataset_name,total_validations,passed_validations,failed_validations,suite_quality_score,total_records,execution_time_ms,failure_rate_pct
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,02_Tipos_y_Formatos,raw_customers,17,9,8,52.94,10000,,47.06
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,02_Tipos_y_Formatos,raw_transactions,10,9,1,90.00,52500,,10.00
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,03_Calidad_de_Datos,raw_customers,15,13,2,86.67,10000,,13.33
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,03_Calidad_de_Datos,raw_transactions,13,12,1,92.31,52500,,7.69
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,04_Seguridad_OWASP,raw_customers,10,4,6,40.00,10000,,60.00
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,04_Seguridad_OWASP,raw_transactions,5,5,0,100.00,52500,,0.00
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,05_Integridad_Referencial,raw_customers,1,1,0,100.00,10000,,0.00
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,06_Reglas_de_Negocio,raw_customers,3,2,1,66.67,10000,,33.33
+7e9f6977-c62f-4e9a-827c-b1280e4de9bd,2026-02-19 02:08:08,running,,06_Reglas_de_Negocio,raw_transactions,3,2,1,66.67,52500,,33.33

@@ -319,7 +319,6 @@ class PipelineExecutor:
             
             # Solo marcar como completado en DB si es output o pipeline completo
             if not stage or stage == 'output':
-                health_status = self.monitoring.get_health_status()
                 execution_status = "completed"
                 result.complete(execution_status)
                 self.audit.complete_execution(

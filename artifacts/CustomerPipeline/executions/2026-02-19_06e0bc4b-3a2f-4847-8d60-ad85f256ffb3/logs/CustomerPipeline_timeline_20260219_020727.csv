@@ -1,0 +1,2 @@
+execution_id,start_time,end_time,duration_seconds,status,execution_type,triggered_by,environment,quality_score,health_status,total_errors,total_warnings,records_processed,records_failed
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,2026-02-19 02:06:39,2026-02-19 02:07:19,40.022,completed,manual,,development,,,0,0,0,0

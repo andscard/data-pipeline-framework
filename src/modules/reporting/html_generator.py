@@ -55,7 +55,6 @@ class HTMLReportGenerator:
         thresholds = monitoring.get('thresholds', {})
         
         validation_stage = stages.get('VALIDATION', {})
-        # Ensure quality_score is numeric (float)
         try:
             quality_score = float(validation_stage.get('quality_score') or 0)
         except (ValueError, TypeError):
@@ -156,7 +155,7 @@ class HTMLReportGenerator:
         
         <!-- Footer -->
         <footer class="footer">
-            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data Pipeline Framework v2.0</p>
+            <p>Data Pipeline Framework • Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </footer>
     </div>
 </body>
@@ -278,10 +277,9 @@ class HTMLReportGenerator:
             color: #721c24;
         }
         
-        .quality-excellent { color: #28a745; }
-        .quality-good { color: #5cb85c; }
-        .quality-warning { color: #ffc107; }
-        .quality-poor { color: #dc3545; }
+        .operational-healthy { color: #28a745; }
+        .operational-warning { color: #ffc107; }
+        .operational-poor { color: #dc3545; }
         
         /* Validation Overview */
         .validation-overview {
@@ -509,39 +507,35 @@ class HTMLReportGenerator:
         status_lower = str(status).lower()
         thresholds = thresholds or {}
         
-        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
-        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
+        operational_warning = thresholds.get('operational_warning', Config.DEFAULT_HEALTH_OPERATIONAL_WARNING)
+        operational_healthy = thresholds.get('operational_healthy', Config.DEFAULT_HEALTH_OPERATIONAL_HEALTHY)
         
-        # Prioridad al status explícito del pipeline
-        if status_lower in ['failed', 'error', 'critical', 'unhealthy']:
-            return '<span class="status-badge status-critical">CRITICAL</span>'
-        elif status_lower in ['warning', 'degraded']:
-            return '<span class="status-badge status-warning">WARNING</span>'
+        if status_lower in ['failed', 'error', 'critical']:
+            return '<span class="status-badge status-critical">NO ALCANZADO</span>'
+        elif status_lower in ['warning']:
+            return '<span class="status-badge status-warning">EN RIESGO</span>'
             
         # Fallback basado en quality score
-        if quality < quality_warning:
-            return '<span class="status-badge status-critical">CRITICAL</span>'
-        elif quality < quality_good:
-            return '<span class="status-badge status-warning">WARNING</span>'
+        if quality < operational_warning:
+            return '<span class="status-badge status-critical">NO ALCANZADO</span>'
+        elif quality < operational_healthy:
+            return '<span class="status-badge status-warning">EN RIESGO</span>'
         else:
-            return '<span class="status-badge status-healthy">HEALTHY</span>'
+            return '<span class="status-badge status-healthy">SUPERADO</span>'
     
     def _get_quality_class(self, score: float, thresholds: Dict[str, float] = None) -> str:
         """Clase CSS para quality score"""
         thresholds = thresholds or {}
         
-        quality_excellent = thresholds.get('quality_excellent', Config.DEFAULT_QUALITY_EXCELLENT)
-        quality_good = thresholds.get('quality_good', Config.DEFAULT_QUALITY_GOOD)
-        quality_warning = thresholds.get('quality_warning', Config.DEFAULT_QUALITY_WARNING)
+        operational_healthy = thresholds.get('operational_healthy', Config.DEFAULT_HEALTH_OPERATIONAL_HEALTHY)
+        operational_warning = thresholds.get('operational_warning', Config.DEFAULT_HEALTH_OPERATIONAL_WARNING)
         
-        if score >= quality_excellent:
-            return 'quality-excellent'
-        elif score >= quality_good:
-            return 'quality-good'
-        elif score >= quality_warning:
-            return 'quality-warning'
+        if score >= operational_healthy:
+            return 'operational-healthy'
+        elif score >= operational_warning:
+            return 'operational-warning'
         else:
-            return 'quality-poor'
+            return 'operational-poor'
     
     def _group_by_suite_from_summary(self, validation_summary: list) -> dict:
         """Agrupar usando validation_summary (datos ya agregados en BD)"""
@@ -594,6 +588,7 @@ class HTMLReportGenerator:
             return ""
 
         rows = []
+
         for ds, stats in dataset_stats.items():
             if ds not in thresholds: continue
             
@@ -602,7 +597,7 @@ class HTMLReportGenerator:
             target = thresholds[ds] * 100
             
             is_critical = score < target
-            status_label = "CRITICAL" if is_critical else "HEALTHY"
+            status_label = "NO ALCANZADO" if is_critical else "SUPERADO"
             status_class = "status-critical" if is_critical else "status-healthy"
             score_color = "#dc3545" if is_critical else "#28a745"
             
@@ -656,7 +651,6 @@ class HTMLReportGenerator:
         rows = []
         for suite_name, data in sorted_suites:
             success_rate = (data['passed'] / data['total'] * 100) if data['total'] > 0 else 0
-            
             status_color = '#dc3545' if data['failed'] > 0 else '#28a745'
             
             rows.append(f"""
@@ -707,10 +701,10 @@ class HTMLReportGenerator:
             failure_rate = (failed_count / total_count * 100) if total_count > 0 else 0
             
             # Color según severidad
-            if failure_rate > (100 - Config.QUALITY_WARNING):
+            if failure_rate > (100 - Config.DEFAULT_HEALTH_OPERATIONAL_WARNING):
                 severity_color = '#dc3545'
                 severity_label = 'CRÍTICO'
-            elif failure_rate > (100 - Config.QUALITY_GOOD):
+            elif failure_rate > (100 - Config.DEFAULT_HEALTH_OPERATIONAL_HEALTHY):
                 severity_color = '#fd7e14'
                 severity_label = 'ALTO'
             else:
@@ -805,7 +799,6 @@ class HTMLReportGenerator:
                 if isinstance(failure_details, dict): failure_details = [failure_details]
                 
                 for detail in failure_details:
-                    # Increment count for each DETAIL row generated
                     detail_row_count += 1
                     
                     kwargs = detail.get('kwargs', {})
@@ -814,15 +807,11 @@ class HTMLReportGenerator:
                     column = kwargs.get('column', kwargs.get('column_list', 'N/A'))
                     if not column or column == 'N/A': column = "Tabla Completa"
                     
-                    # CORRECCION: Obtener expectation_type real del detalle, no del registro padre (que es un resumen)
                     real_exp_type = detail.get('expectation_type', exp_type)
                     
                     # Descripción legible usando el Formatter Modular
                     description = ValidationFormatter.get_description(real_exp_type, detail)
-                    
-                    # Métricas específicas (Priorizar datos directos del detalle)
                     result_info = detail.get('result', detail) 
-                    
                     unexpected_count = result_info.get('unexpected_count', detail.get('unexpected_count'))
                     element_count = result_info.get('element_count', detail.get('element_count'))
                     observed_value = result_info.get('observed_value', detail.get('observed_value'))
@@ -835,11 +824,8 @@ class HTMLReportGenerator:
                         else:
                             affected_display = self._format_number(unexpected_count)
                     elif partial_list:
-                        # Fallback: Si no hay conteo total pero sí ejemplos, mostramos cantidad de ejemplos +
                         affected_display = f"Min. {len(partial_list)}"
                     elif observed_value is not None:
-                        # Caso especial: Validaciones a nivel tabla (row_count) o agregaciones
-                        # donde observed_value es la métrica relevante
                         if 'expect_table_' in real_exp_type or 'expect_column_mean' in real_exp_type:
                              affected_display = f"Valor: {observed_value}"
                         else:

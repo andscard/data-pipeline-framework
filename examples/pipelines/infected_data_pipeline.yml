@@ -19,15 +19,10 @@ pipeline:
   description: "Pipeline completo de datos de clientes y transacciones"
   schedule: "@daily"
 
-# ============================================================================
-# QUALITY GATES & THRESHOLDS (Custom Overrides)
-# ============================================================================
+# QUALITY GATES & THRESHOLDS
 thresholds:
-  operational_healthy: 95.0   # Default: 95.0
-  operational_warning: 80.0   # Default: 80.0
-  quality_excellent: 90.0     # Default: 90.0
-  quality_good: 70.0          # Default: 70.0
-  quality_warning: 50.0       # Default: 50.0
+  operational_healthy: 75
+  operational_warning: 60
 
 # ============================================================================
 # STAGE 1: INGESTION
@@ -77,11 +72,6 @@ ingestion:
 # Sistema de validación unificado (Great Expectations):
 #   📦 ESQUEMA: Tipos, rangos, nullable (convertido autom. a GE)
 #   ✅ GREAT EXPECTATIONS: Validación de calidad (patterns, business rules)
-#
-# Organización por categorías:
-#   🔒 SEGURIDAD: Automática según security_level (strict/standard/relaxed)
-#   📊 CALIDAD: Completitud, formatos, rangos personalizados
-#   💼 NEGOCIO: Reglas de dominio y compliance
 # ============================================================================
 validation:
   schema:
@@ -210,7 +200,7 @@ validation:
     # ========================================================================
     raw_transactions:
       security_level: strict
-      quality_threshold: 0.80
+      quality_threshold: 0.85
       
       columns:
         # ---- IDENTIFICADORES ----

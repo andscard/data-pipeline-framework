@@ -1,0 +1,53 @@
+execution_id,execution_date,status,total_errors,total_warnings,execution_error,stage_name,stage_errors,stage_warnings,stage_error_details
+12503194-5ec3-4631-9b65-655f3660a901,2026-02-19 00:03:48,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+df989e83-7b1a-4768-a5ba-be12dde3aab8,2026-02-18 04:42:14,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+e5132bbf-a03e-4211-98eb-f38b6daef1fa,2026-02-18 04:32:15,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+d8f50a83-b259-4dac-8612-18d0c64530ba,2026-02-18 04:21:01,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+795ce944-ca44-4a78-95f8-9fe782136f42,2026-02-18 04:18:00,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+cd5ca17a-7878-43c4-a319-673cac2414d5,2026-02-18 04:15:51,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+a259da34-fb3b-4bc4-abe3-e490fed5f222,2026-02-18 04:07:56,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+e277c944-aa64-4172-9c85-fbbfd1d5cfde,2026-02-18 01:53:18,completed,0,0,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+37c87801-a675-42eb-96ce-8488813c1918,2026-02-18 00:34:31,completed,1,2,,,,,
+7fa6b93e-f529-4622-9e95-aecd59681813,2026-02-18 00:34:22,completed,1,1,,TRANSFORMATION,0,0,[]
+f87b782a-b61e-4cee-b6c7-3c5b7b910496,2026-02-18 00:34:04,completed,1,1,,VALIDATION,0,0,[]
+95d7dbbb-47bf-4bf5-9d62-f502497d30a8,2026-02-18 00:33:54,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+2f2fd1ff-939e-401b-b1b3-1b6c58203c1b,2026-02-18 00:00:36,completed,1,2,,,,,
+a7de70bb-27e3-4dd4-a243-86bfd571d043,2026-02-18 00:00:28,completed,1,1,,TRANSFORMATION,0,0,[]
+5e497d37-5968-4e95-896b-ef1c4550af79,2026-02-18 00:00:13,completed,1,1,,VALIDATION,0,0,[]
+96a13b8d-2937-4511-bed3-1d1c5fb39249,2026-02-18 00:00:05,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+b5787e45-c6c5-4060-b7f1-3100d762c396,2026-02-17 13:33:29,completed,1,2,,,,,
+4256fb9e-5cfe-4e5d-b8fd-988e1c8bf401,2026-02-17 13:33:21,completed,1,1,,TRANSFORMATION,0,0,[]
+e88885f1-991b-453c-9ef1-6ec2a7c88c3b,2026-02-17 13:33:04,completed,1,1,,VALIDATION,0,0,[]
+c9912dc7-ede3-43cb-ab66-b82b4bc0d139,2026-02-17 13:32:55,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+1bfe0d67-28d3-494a-99dc-04556106a1e1,2026-02-17 13:31:32,completed,1,2,,,,,
+8771dc98-e86d-4881-8b79-96a975163e9a,2026-02-17 13:31:25,completed,1,1,,TRANSFORMATION,0,0,[]
+7cbd6321-0a7b-4499-b104-6624d53c02b1,2026-02-17 13:31:07,completed,1,1,,VALIDATION,0,0,[]
+493a9496-1b5a-43b9-81c1-49293124d01b,2026-02-17 13:30:58,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+4c271e37-6c69-4a74-b1a9-0073162a4c1f,2026-02-17 13:29:24,completed,1,2,,,,,
+2b8bedf1-0788-46e2-bd3a-2f4b443e7e9e,2026-02-17 13:29:17,completed,1,1,,TRANSFORMATION,0,0,[]
+9f672b46-a107-476c-899d-94e87129a9aa,2026-02-17 13:29:01,completed,1,1,,VALIDATION,0,0,[]
+54451c14-05c2-476d-a487-5426e640ba15,2026-02-17 13:28:52,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+a87a481f-ab16-40e8-bca1-cc924820eef0,2026-02-17 13:25:00,completed,1,2,,,,,
+14a339fe-a231-43cf-b6d5-eb37bc74effb,2026-02-17 13:24:51,completed,1,1,,TRANSFORMATION,0,0,[]
+66e34e13-8883-4396-afc1-e2abb4e79d2e,2026-02-17 13:24:36,completed,1,1,,VALIDATION,0,0,[]
+16e710b3-6842-4e58-8997-e8a2b5d32531,2026-02-17 13:24:28,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+e18f9217-a490-4bdd-a17a-3f978a6e9bfc,2026-02-17 13:20:40,completed,1,2,,,,,
+d1993e76-b010-4a30-a613-26d9aa2fa95b,2026-02-17 13:20:32,completed,1,1,,TRANSFORMATION,0,0,[]
+08656209-9460-4250-a21c-c2ef3f85140d,2026-02-17 13:20:16,completed,1,1,,VALIDATION,0,0,[]
+438760a1-6f71-4994-8311-1ea812d3579a,2026-02-17 13:20:08,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+38187f7b-3b86-4337-92ef-18d507f58025,2026-02-17 13:18:33,completed,1,2,,,,,
+9b8e1765-6ae4-47ea-88f5-b397e41eec01,2026-02-17 13:18:25,completed,1,1,,TRANSFORMATION,0,0,[]
+da4f1975-1953-4079-9b44-16b903348b31,2026-02-17 13:18:08,completed,1,1,,VALIDATION,0,0,[]
+99eea190-69ac-419e-8664-59ae96e90cc6,2026-02-17 13:17:59,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+9b0e1a12-dc66-4fcc-957f-ed3ba3f806cd,2026-02-17 00:00:33,completed,1,2,,,,,
+a30cbcc8-8a80-4c77-a478-145f011d27df,2026-02-17 00:00:27,completed,1,1,,TRANSFORMATION,0,0,[]
+47d95a46-c63b-4da2-ad4b-f6c7d4240ed7,2026-02-17 00:00:14,completed,1,1,,VALIDATION,0,0,[]
+39c4e629-a85e-4ded-b362-7cad9ea60d39,2026-02-17 00:00:07,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+193af9bf-2a7d-4878-8aaa-b4050e354b8a,2026-02-16 00:00:35,completed,1,2,,,,,
+e6d05069-46b1-4ff5-a6cc-105fd805f731,2026-02-16 00:00:27,completed,1,1,,TRANSFORMATION,0,0,[]
+aef0bf21-5eae-42ae-b653-490104e24bc3,2026-02-16 00:00:14,completed,1,1,,VALIDATION,0,0,[]
+a5c9ec15-d41f-404c-a7bb-85790a0ec128,2026-02-16 00:00:06,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"
+bf2bf069-0b35-425c-9e9e-f6280019c660,2026-02-15 20:53:20,completed,1,2,,,,,
+330d80c4-25f2-488a-bc40-583856d026be,2026-02-15 20:53:15,completed,1,1,,TRANSFORMATION,0,0,[]
+43813210-3440-45f6-8b10-b4ac2d4d7b03,2026-02-15 20:53:05,completed,1,1,,VALIDATION,0,0,[]
+82c962a7-e829-411a-bb11-4d82b511423d,2026-02-15 20:52:58,completed,2,1,,INGESTION,1,0,"[""Source 'transactions_csv': Archivo CSV no encontrado: data/samples/transactions.csv""]"

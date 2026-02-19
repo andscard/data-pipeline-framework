@@ -1,0 +1,2 @@
+execution_id,pipeline_name,status,execution_type,triggered_by,environment,start_time,end_time,duration_seconds,records_processed,records_failed,quality_score,health_status,total_errors,total_warnings,report_path,executive_report_path
+06e0bc4b-3a2f-4847-8d60-ad85f256ffb3,CustomerPipeline,completed,manual,,development,2026-02-19 02:06:39,2026-02-19 02:07:19,40.022,0,0,,,0,0,,/opt/airflow/framework/artifacts/CustomerPipeline/executions/2026-02-19_06e0bc4b-3a2f-4847-8d60-ad85f256ffb3/reports/executive_report.html
